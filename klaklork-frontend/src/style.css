@@ -1,0 +1,221 @@
+@import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:ital,wght@0,100..700;1,100..700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --gold: #f5c842;
+  --gold-dark: #d4a017;
+  --crimson: #c0392b;
+  --crimson-dark: #96281b;
+  --bg-deep: #0d0d1a;
+  --bg-card: #16162a;
+  --bg-surface: #1e1e38;
+  --border: rgba(245, 200, 66, 0.15);
+  --text-primary: #f0e6c8;
+  --text-muted: #8b7d5e;
+  --win-glow: #f5c842;
+  --reverb-glow: rgba(245, 200, 66, 0.3);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', 'Kantumruy Pro', sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(192,57,43,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(245,200,66,0.06) 0%, transparent 50%);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Utility classes ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 0.5rem; padding: 0.6rem 1.4rem; border-radius: 999px;
+  font-weight: 600; font-size: 0.9rem; cursor: pointer;
+  transition: all 0.2s ease; border: none; outline: none;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-gold {
+  background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+  color: #1a1a00;
+  box-shadow: 0 0 20px rgba(245,200,66,0.3);
+}
+.btn-gold:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px rgba(245,200,66,0.5);
+}
+.btn-red {
+  background: linear-gradient(135deg, var(--crimson), var(--crimson-dark));
+  color: #fff;
+  box-shadow: 0 0 20px rgba(192,57,43,0.3);
+}
+.btn-red:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px rgba(192,57,43,0.5);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-surface);
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+.input {
+  width: 100%; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0.7rem 1rem; color: var(--text-primary);
+  font-size: 0.95rem; outline: none; transition: border-color 0.2s;
+  font-family: inherit;
+}
+.input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245,200,66,0.1); }
+.input::placeholder { color: var(--text-muted); }
+
+.label {
+  display: block; font-size: 0.8rem; font-weight: 600;
+  color: var(--text-muted); margin-bottom: 0.4rem; letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── Logo / Title ── */
+.game-title {
+  font-family: 'Kantumruy Pro', sans-serif;
+  font-size: 2.5rem; font-weight: 800;
+  background: linear-gradient(135deg, var(--gold), #ff9500, var(--crimson));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: none; filter: drop-shadow(0 0 20px rgba(245,200,66,0.4));
+}
+
+/* ── Balance badge ── */
+.balance-badge {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: rgba(245,200,66,0.1); border: 1px solid rgba(245,200,66,0.3);
+  border-radius: 999px; padding: 0.35rem 0.9rem;
+  font-size: 0.9rem; font-weight: 700; color: var(--gold);
+}
+
+/* ── Animal grid tile ── */
+.animal-tile {
+  background: var(--bg-surface); border: 2px solid transparent;
+  border-radius: 14px; padding: 0.8rem; cursor: pointer;
+  transition: all 0.2s ease; position: relative; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+  user-select: none;
+}
+.animal-tile:hover { transform: translateY(-3px); border-color: rgba(245,200,66,0.4); }
+.animal-tile.has-bet { border-color: var(--gold); background: rgba(245,200,66,0.08); }
+.animal-tile.has-bet::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at center, rgba(245,200,66,0.1), transparent 70%);
+  pointer-events: none;
+}
+.animal-tile.win-1x { border-color: #27ae60; background: rgba(39,174,96,0.12); }
+.animal-tile.win-2x { border-color: #e67e22; background: rgba(230,126,34,0.12); }
+.animal-tile.win-3x { border-color: var(--crimson); background: rgba(192,57,43,0.15); }
+.animal-tile.spinning { animation: tilePulse 0.3s ease-in-out infinite alternate; }
+
+@keyframes tilePulse {
+  from { border-color: var(--gold); box-shadow: 0 0 8px rgba(245,200,66,0.3); }
+  to   { border-color: var(--crimson); box-shadow: 0 0 20px rgba(192,57,43,0.4); }
+}
+
+.animal-tile img { width: 100%; border-radius: 8px; object-fit: cover; }
+.bet-label { font-size: 0.75rem; font-weight: 700; color: var(--gold); }
+
+/* ── Result slots ── */
+.result-slot {
+  background: var(--bg-surface); border: 2px solid var(--border);
+  border-radius: 14px; padding: 0.6rem; overflow: hidden;
+  transition: all 0.3s ease;
+}
+.result-slot.spinning { animation: slotSpin 0.15s linear infinite; }
+.result-slot.revealed { border-color: var(--gold); box-shadow: 0 0 20px rgba(245,200,66,0.3); }
+
+@keyframes slotSpin {
+  0%   { transform: scaleY(1);   opacity: 1; }
+  50%  { transform: scaleY(0.9); opacity: 0.6; }
+  100% { transform: scaleY(1);   opacity: 1; }
+}
+
+/* ── Modal ── */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+}
+.modal-box {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 20px; padding: 2rem; max-width: 420px; width: 90%;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+  animation: modalIn 0.25s ease;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Player list ── */
+.player-pill {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.8rem;
+}
+.player-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--crimson));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 800; color: #fff;
+}
+
+/* ── Status badge ── */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  border-radius: 999px; padding: 0.25rem 0.75rem;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+}
+.status-waiting  { background: rgba(100,100,200,0.15); color: #8888ff; border: 1px solid rgba(100,100,200,0.3); }
+.status-betting  { background: rgba(245,200,66,0.15);  color: var(--gold); border: 1px solid rgba(245,200,66,0.3); }
+.status-spinning { background: rgba(192,57,43,0.15);   color: #ff6b6b;    border: 1px solid rgba(192,57,43,0.3); }
+.status-finished { background: rgba(39,174,96,0.15);   color: #55efc4;    border: 1px solid rgba(39,174,96,0.3); }
+
+/* ── Pulsing dot ── */
+.pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  animation: pulseDot 1.5s ease-in-out infinite;
+}
+@keyframes pulseDot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+
+/* ── Countdown ring ── */
+.countdown { font-size: 2rem; font-weight: 900; color: var(--crimson); animation: countPulse 1s ease infinite; }
+@keyframes countPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+
+/* ── Toast notification ── */
+.toast {
+  position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 100;
+  padding: 0.8rem 1.4rem; border-radius: 12px;
+  font-size: 0.9rem; font-weight: 600;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  animation: toastIn 0.3s ease;
+}
+@keyframes toastIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.toast-win  { background: rgba(39,174,96,0.9);  border: 1px solid #27ae60; color: #fff; }
+.toast-loss { background: rgba(192,57,43,0.9);  border: 1px solid var(--crimson); color: #fff; }
+.toast-info { background: rgba(52,73,94,0.95);  border: 1px solid var(--border); color: var(--text-primary); }
+
+/* ── Page transitions ── */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
