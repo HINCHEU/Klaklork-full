@@ -26,6 +26,11 @@ class BetPlaced implements ShouldBroadcast
         return [new Channel("game.{$this->room->code}")];
     }
 
+    public function broadcastAs(): string
+    {
+        return 'BetPlaced';
+    }
+
     public function broadcastWith(): array
     {
         return [

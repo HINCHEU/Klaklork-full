@@ -5,65 +5,65 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function register(Request $request)
+    /** Starting balance handed to every new player. */
+    private const STARTING_BALANCE = 10000;
+
+    /**
+     * POST /api/guest — enter the game with just a display name.
+     *
+     * Returns a Sanctum token the browser keeps in localStorage, so closing
+     * the tab and coming back resumes the same player (name + balance).
+     */
+    public function enter(Request $request)
     {
         $data = $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users',
-            'password' => 'required|string|min:6|confirmed',
+            // \p{M} matters: Khmer builds syllables from combining marks (coeng,
+            // vowel signs), so a name like "ម្ចាស់ការ" is letters + marks.
+            'name' => ['required', 'string', 'min:2', 'max:20', 'regex:/^[\p{L}\p{N}][\p{L}\p{M}\p{N} _.\-]*$/u'],
+        ], [
+            'name.regex' => 'Name can only contain letters, numbers, spaces, dots, dashes and underscores.',
         ]);
 
         $user = User::create([
-            'name'     => $data['name'],
-            'email'    => $data['email'],
-            'password' => Hash::make($data['password']),
-            'balance'  => 10000,
+            'name'    => trim($data['name']),
+            'balance' => self::STARTING_BALANCE,
         ]);
-
-        $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
             'user'  => $user,
-            'token' => $token,
+            'token' => $user->createToken('guest')->plainTextToken,
         ], 201);
     }
 
-    public function login(Request $request)
-    {
-        $data = $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required|string',
-        ]);
-
-        $user = User::where('email', $data['email'])->first();
-
-        if (! $user || ! Hash::check($data['password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
-        }
-
-        $token = $user->createToken('api')->plainTextToken;
-
-        return response()->json([
-            'user'  => $user,
-            'token' => $token,
-        ]);
-    }
-
+    /** GET /api/user — resume an existing session. */
     public function user(Request $request)
     {
         return response()->json($request->user());
     }
 
+    /** PATCH /api/user — change display name without losing the session. */
+    public function updateName(Request $request)
+    {
+        $data = $request->validate([
+            // \p{M} matters: Khmer builds syllables from combining marks (coeng,
+            // vowel signs), so a name like "ម្ចាស់ការ" is letters + marks.
+            'name' => ['required', 'string', 'min:2', 'max:20', 'regex:/^[\p{L}\p{N}][\p{L}\p{M}\p{N} _.\-]*$/u'],
+        ]);
+
+        $user = $request->user();
+        $user->update(['name' => trim($data['name'])]);
+
+        return response()->json($user);
+    }
+
+    /** POST /api/logout — drop the session token for this browser. */
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
-        return response()->json(['message' => 'Logged out successfully']);
+
+        return response()->json(['message' => 'Session ended.']);
     }
 }

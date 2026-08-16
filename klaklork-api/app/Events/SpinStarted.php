@@ -20,6 +20,11 @@ class SpinStarted implements ShouldBroadcast
         return [new Channel("game.{$this->room->code}")];
     }
 
+    public function broadcastAs(): string
+    {
+        return 'SpinStarted';
+    }
+
     public function broadcastWith(): array
     {
         return ['status' => 'spinning'];
