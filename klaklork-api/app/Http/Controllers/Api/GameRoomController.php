@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\GameRoom;
+use App\Models\User;
 use App\Events\PlayerJoined;
+use App\Events\PlayerLeft;
 use App\Events\SpinStarted;
 use App\Events\SpinResult;
 use Illuminate\Http\Request;
@@ -12,12 +14,12 @@ use Illuminate\Support\Facades\DB;
 
 class GameRoomController extends Controller
 {
-    /** GET /api/games — list open rooms */
+    /** GET /api/games — list joinable rooms (any phase, as long as someone is in them) */
     public function index()
     {
         $rooms = GameRoom::with('host:id,name')
             ->withCount('players')
-            ->whereIn('status', ['waiting', 'betting'])
+            ->has('players')
             ->latest()
             ->get();
 
@@ -49,10 +51,9 @@ class GameRoomController extends Controller
     /** GET /api/games/{code} — get room info */
     public function show(string $code)
     {
-        $room = GameRoom::where('code', $code)
-            ->with(['host:id,name', 'players:id,name,balance', 'bets.user:id,name'])
-            ->withCount('players')
-            ->firstOrFail();
+        $room = GameRoom::findByCodeOrFail($code)
+            ->load(['host:id,name', 'players:id,name,balance', 'bets.user:id,name'])
+            ->loadCount('players');
 
         return response()->json($room);
     }
@@ -60,33 +61,76 @@ class GameRoomController extends Controller
     /** POST /api/games/{code}/join */
     public function join(Request $request, string $code)
     {
-        $room = GameRoom::where('code', $code)->firstOrFail();
+        $room   = GameRoom::findByCodeOrFail($code);
+        $userId = $request->user()->id;
 
-        if ($room->status !== 'waiting') {
-            return response()->json(['message' => 'Game has already started.'], 422);
+        // Already a member — this is a reconnect (tab closed, refresh, invite link
+        // re-opened). Let them back in whatever phase the room is currently in.
+        if ($room->players()->where('user_id', $userId)->exists()) {
+            return response()->json($room->load('host:id,name', 'players:id,name,balance'));
         }
 
         if ($room->players()->count() >= $room->max_players) {
             return response()->json(['message' => 'Room is full.'], 422);
         }
 
-        $userId = $request->user()->id;
-
-        if ($room->players()->where('user_id', $userId)->exists()) {
-            return response()->json($room->load('host:id,name', 'players:id,name,balance'));
-        }
-
         $room->players()->attach($userId, ['joined_at' => now()]);
 
-        broadcast(new PlayerJoined($room, $request->user()))->toOthers();
+        try { broadcast(new PlayerJoined($room, $request->user()))->toOthers(); } catch (\Throwable) {}
 
         return response()->json($room->load('host:id,name', 'players:id,name,balance'));
+    }
+
+    /** POST /api/games/{code}/leave */
+    public function leave(Request $request, string $code)
+    {
+        $room   = GameRoom::findByCodeOrFail($code);
+        $userId = $request->user()->id;
+
+        $room->players()->detach($userId);
+
+        // Last one out closes the room for good
+        if ($room->players()->count() === 0) {
+            $room->delete();
+            return response()->json(['message' => 'Room closed.']);
+        }
+
+        // Host left but players remain — hand the room to the next player
+        if ($room->host_user_id === $userId) {
+            $room->update(['host_user_id' => $room->players()->first()->id]);
+        }
+
+        try { broadcast(new PlayerLeft($room->fresh(), $request->user()))->toOthers(); } catch (\Throwable) {}
+
+        return response()->json(['message' => 'Left room.']);
+    }
+
+    /** POST /api/games/{code}/open-betting — host opens betting */
+    public function openBetting(Request $request, string $code)
+    {
+        $room = GameRoom::findByCodeOrFail($code);
+
+        if ($room->host_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Only the host can start betting.'], 403);
+        }
+
+        if (! in_array($room->status, ['waiting', 'finished'])) {
+            return response()->json(['message' => 'Cannot open betting from the current state.'], 422);
+        }
+
+        // Clear bets from the previous round
+        $room->bets()->delete();
+        $room->update(['status' => 'betting', 'result' => null]);
+
+        try { broadcast(new \App\Events\BettingOpened($room)); } catch (\Throwable) {}
+
+        return response()->json($room);
     }
 
     /** POST /api/games/{code}/spin — host triggers spin */
     public function spin(Request $request, string $code)
     {
-        $room = GameRoom::where('code', $code)->firstOrFail();
+        $room = GameRoom::findByCodeOrFail($code);
 
         if ($room->host_user_id !== $request->user()->id) {
             return response()->json(['message' => 'Only the host can spin.'], 403);
@@ -97,15 +141,15 @@ class GameRoomController extends Controller
         }
 
         $room->update(['status' => 'spinning']);
-        broadcast(new SpinStarted($room));
+        try { broadcast(new SpinStarted($room)); } catch (\Throwable) {}
 
         return response()->json($room);
     }
 
-    /** POST /api/games/{code}/stop — host stops spin */
+    /** POST /api/games/{code}/stop — host stops spin and resolves results */
     public function stop(Request $request, string $code)
     {
-        $room = GameRoom::where('code', $code)->firstOrFail();
+        $room = GameRoom::findByCodeOrFail($code);
 
         if ($room->host_user_id !== $request->user()->id) {
             return response()->json(['message' => 'Only the host can stop.'], 403);
@@ -115,60 +159,94 @@ class GameRoomController extends Controller
             return response()->json(['message' => 'Not spinning.'], 422);
         }
 
-        // Generate 3 random results (1-6, no repeat)
-        $slots = collect(range(1, 6))->shuffle()->take(3)->values()->toArray();
+        // Generate 3 random results (1–6), repeats allowed (authentic Kla Klouk rules)
+        $slots = [
+            random_int(1, 6),
+            random_int(1, 6),
+            random_int(1, 6),
+        ];
+
         $room->update(['status' => 'finished', 'result' => $slots]);
 
-        // Calculate payouts
-        $this->calculatePayouts($room, $slots);
+        // Move money between the host (banker) and the players
+        $settlement = $this->settleRound($room, $slots);
 
-        broadcast(new SpinResult($room->fresh(['bets.user:id,name'])));
+        // Broadcast results (with updated bets and user info)
+        try { broadcast(new SpinResult($room->fresh(['bets.user:id,name']), $settlement)); } catch (\Throwable) {}
 
-        return response()->json($room->fresh(['bets.user:id,name']));
+        return response()->json([
+            'room'       => $room->fresh(['bets.user:id,name']),
+            'settlement' => $settlement,
+        ]);
     }
 
-    /** POST /api/games/{code}/open-betting — host opens betting */
-    public function openBetting(Request $request, string $code)
+    /**
+     * Settle a resolved round between the host (the banker) and every player.
+     *
+     * Every riel a player wins is paid by the host, and every riel a player
+     * loses is collected by the host — the round is zero-sum:
+     *
+     *   - Symbol appears 1× → player gets stake back + 1× profit, host pays 1× stake
+     *   - Symbol appears 2× → player gets stake back + 2× profit, host pays 2× stake
+     *   - Symbol appears 3× → player gets stake back + 3× profit, host pays 3× stake
+     *   - Symbol not present → the player's stake goes to the host
+     *
+     * The stake leaves the player's balance when the bet is placed, so a losing
+     * stake only has to be credited to the host here. The host's balance may go
+     * negative — the banker is allowed to be in the red.
+     *
+     * @return array{host: array, players: array} per-account settlement summary
+     */
+    private function settleRound(GameRoom $room, array $slots): array
     {
-        $room = GameRoom::where('code', $code)->firstOrFail();
-
-        if ($room->host_user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Only the host can start betting.'], 403);
-        }
-
-        if ($room->status !== 'waiting') {
-            return response()->json(['message' => 'Room is not in waiting state.'], 422);
-        }
-
-        $room->update(['status' => 'betting']);
-
-        broadcast(new \App\Events\BettingOpened($room));
-
-        return response()->json($room);
-    }
-
-    private function calculatePayouts(GameRoom $room, array $slots): void
-    {
-        // Count how many times each slot appears in results
+        // Count occurrences of each slot number in the 3-symbol result
         $slotCounts = array_count_values($slots);
 
-        DB::transaction(function () use ($room, $slotCounts) {
-            foreach ($room->bets as $bet) {
-                $slot  = $bet->animal_slot;
-                $count = $slotCounts[$slot] ?? 0;
+        return DB::transaction(function () use ($room, $slotCounts) {
+            $host    = User::lockForUpdate()->find($room->host_user_id);
+            $hostNet = 0;
+            $nets    = [];   // user_id => net riel for this round
+            $players = [];   // user_id => User
 
-                $won = match ($count) {
-                    1 => $bet->amount * 1,   // 1x win
-                    2 => $bet->amount * 2,   // 2x win
-                    3 => $bet->amount * 3,   // 3x win
-                    default => -$bet->amount, // loss
-                };
+            foreach ($room->bets()->with('user')->get() as $bet) {
+                $count = $slotCounts[$bet->animal_slot] ?? 0;
 
-                $bet->update(['won_amount' => $won]);
+                if ($count > 0) {
+                    // Player wins: stake returned plus `count`× profit, paid by the host
+                    $profit = $bet->amount * $count;
+                    $bet->user->increment('balance', $bet->amount + $profit);
+                    $hostNet -= $profit;
+                    $net = $profit;
+                } else {
+                    // Player loses: the stake they already paid moves to the host
+                    $hostNet += $bet->amount;
+                    $net = -$bet->amount;
+                }
 
-                // Update user balance
-                $bet->user->increment('balance', $won + ($count > 0 ? $bet->amount : 0));
+                $bet->update(['won_amount' => $net]);
+
+                $nets[$bet->user_id]    = ($nets[$bet->user_id] ?? 0) + $net;
+                $players[$bet->user_id] = $bet->user;
             }
+
+            if ($hostNet !== 0) {
+                $host->increment('balance', $hostNet);   // negative = the banker pays out
+            }
+
+            return [
+                'host' => [
+                    'id'      => $host->id,
+                    'name'    => $host->name,
+                    'net'     => $hostNet,
+                    'balance' => $host->fresh()->balance,
+                ],
+                'players' => collect($nets)->map(fn ($net, $userId) => [
+                    'id'      => $userId,
+                    'name'    => $players[$userId]->name,
+                    'net'     => $net,
+                    'balance' => $players[$userId]->fresh()->balance,
+                ])->values()->all(),
+            ];
         });
     }
 }

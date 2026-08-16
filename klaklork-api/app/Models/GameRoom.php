@@ -41,6 +41,12 @@ class GameRoom extends Model
         return $this->hasMany(Bet::class);
     }
 
+    /** Room codes are stored uppercase — look them up case-insensitively. */
+    public static function findByCodeOrFail(string $code): self
+    {
+        return self::where('code', strtoupper(trim($code)))->firstOrFail();
+    }
+
     public static function generateCode(): string
     {
         do {

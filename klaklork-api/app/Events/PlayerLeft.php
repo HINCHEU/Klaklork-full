@@ -10,7 +10,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class PlayerJoined implements ShouldBroadcast
+class PlayerLeft implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -23,13 +23,13 @@ class PlayerJoined implements ShouldBroadcast
 
     public function broadcastAs(): string
     {
-        return 'PlayerJoined';
+        return 'PlayerLeft';
     }
 
     public function broadcastWith(): array
     {
         return [
-            'user'         => ['id' => $this->user->id, 'name' => $this->user->name],
+            'user'          => ['id' => $this->user->id, 'name' => $this->user->name],
             'players_count' => $this->room->players()->count(),
         ];
     }
