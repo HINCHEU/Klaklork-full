@@ -14,7 +14,7 @@ class BetController extends Controller
     /** POST /api/games/{code}/bets */
     public function store(Request $request, string $code)
     {
-        $room = GameRoom::where('code', $code)->firstOrFail();
+        $room = GameRoom::findByCodeOrFail($code);
 
         if ($room->status !== 'betting') {
             return response()->json(['message' => 'Betting is not open yet.'], 422);
@@ -30,6 +30,12 @@ class BetController extends Controller
         // Check player is in room
         if (! $room->players()->where('user_id', $user->id)->exists()) {
             return response()->json(['message' => 'You are not in this room.'], 403);
+        }
+
+        // The host banks the round — they pay the winners and collect the losses,
+        // so they can't also bet against themselves.
+        if ($room->host_user_id === $user->id) {
+            return response()->json(['message' => 'You are the banker — you cannot place bets in your own room.'], 403);
         }
 
         if ($user->balance < $betAmount) {
@@ -58,7 +64,7 @@ class BetController extends Controller
             ]);
         });
 
-        broadcast(new BetPlaced($room, $user, $bet))->toOthers();
+        try { broadcast(new BetPlaced($room, $user, $bet))->toOthers(); } catch (\Throwable) {}
 
         return response()->json([
             'bet'     => $bet,
@@ -69,7 +75,7 @@ class BetController extends Controller
     /** GET /api/games/{code}/bets — get all bets for a room */
     public function index(string $code)
     {
-        $room = GameRoom::where('code', $code)->firstOrFail();
+        $room = GameRoom::findByCodeOrFail($code);
         $bets = $room->bets()->with('user:id,name')->get();
 
         return response()->json($bets);

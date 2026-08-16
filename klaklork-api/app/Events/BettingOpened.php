@@ -20,11 +20,17 @@ class BettingOpened implements ShouldBroadcast
         return [new Channel("game.{$this->room->code}")];
     }
 
+    public function broadcastAs(): string
+    {
+        return 'BettingOpened';
+    }
+
     public function broadcastWith(): array
     {
         return [
-            'status'     => 'betting',
-            'bet_amount' => $this->room->bet_amount,
+            'status'        => 'betting',
+            'bet_amount'    => $this->room->bet_amount,
+            'round_cleared' => true,
         ];
     }
 }

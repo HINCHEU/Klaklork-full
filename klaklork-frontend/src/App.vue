@@ -1,7 +1,11 @@
 <template>
-  <router-view v-slot="{ Component }">
+  <!-- Views have multi-root templates, so the page needs a single wrapper element
+       for <transition mode="out-in"> to detect the leave and mount the next view. -->
+  <router-view v-slot="{ Component, route }">
     <transition name="fade" mode="out-in">
-      <component :is="Component" />
+      <div :key="route.path">
+        <component :is="Component" />
+      </div>
     </transition>
   </router-view>
 

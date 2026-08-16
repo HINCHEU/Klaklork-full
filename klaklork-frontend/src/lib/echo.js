@@ -15,6 +15,8 @@ export function getEcho() {
       wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
       forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'http') === 'https',
       enabledTransports: ['ws', 'wss'],
+      // No namespace — we use the dot-prefix convention in .listen() calls
+      namespace: '',
     })
   }
   return echo
