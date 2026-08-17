@@ -4,7 +4,7 @@ namespace App\Events;
 
 use App\Models\GameRoom;
 use App\Models\User;
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -18,7 +18,7 @@ class PlayerLeft implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
-        return [new Channel("game.{$this->room->code}")];
+        return [new PrivateChannel("game.{$this->room->code}")];
     }
 
     public function broadcastAs(): string

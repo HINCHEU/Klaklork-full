@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\PlayerNameRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 
@@ -17,18 +18,10 @@ class AuthController extends Controller
      * Returns a Sanctum token the browser keeps in localStorage, so closing
      * the tab and coming back resumes the same player (name + balance).
      */
-    public function enter(Request $request)
+    public function enter(PlayerNameRequest $request)
     {
-        $data = $request->validate([
-            // \p{M} matters: Khmer builds syllables from combining marks (coeng,
-            // vowel signs), so a name like "ម្ចាស់ការ" is letters + marks.
-            'name' => ['required', 'string', 'min:2', 'max:20', 'regex:/^[\p{L}\p{N}][\p{L}\p{M}\p{N} _.\-]*$/u'],
-        ], [
-            'name.regex' => 'Name can only contain letters, numbers, spaces, dots, dashes and underscores.',
-        ]);
-
         $user = User::create([
-            'name'    => trim($data['name']),
+            'name'    => $request->displayName(),
             'balance' => self::STARTING_BALANCE,
         ]);
 
@@ -45,16 +38,10 @@ class AuthController extends Controller
     }
 
     /** PATCH /api/user — change display name without losing the session. */
-    public function updateName(Request $request)
+    public function updateName(PlayerNameRequest $request)
     {
-        $data = $request->validate([
-            // \p{M} matters: Khmer builds syllables from combining marks (coeng,
-            // vowel signs), so a name like "ម្ចាស់ការ" is letters + marks.
-            'name' => ['required', 'string', 'min:2', 'max:20', 'regex:/^[\p{L}\p{N}][\p{L}\p{M}\p{N} _.\-]*$/u'],
-        ]);
-
         $user = $request->user();
-        $user->update(['name' => trim($data['name'])]);
+        $user->update(['name' => $request->displayName()]);
 
         return response()->json($user);
     }

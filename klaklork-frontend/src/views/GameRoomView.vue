@@ -3,15 +3,44 @@
   <div class="bg-grid"></div>
 
   <div class="min-h-screen z-content" style="position:relative">
+    <!-- Locked room reached by invite link: ask before joining, rather than
+         bouncing the player back to the lobby to start again. -->
+    <div v-if="gateOpen" class="flex items-center justify-center min-h-screen px-6">
+      <div class="card card-premium" style="max-width:380px; width:100%">
+        <div class="text-center" style="margin-bottom:1.25rem">
+          <div style="font-size:2.5rem; margin-bottom:0.5rem">🔒</div>
+          <h1 style="font-size:1.15rem; font-weight:900; margin-bottom:0.25rem">{{ t('room.lockedTitle') }}</h1>
+          <p style="color:var(--text-muted); font-size:0.85rem">
+            {{ t('room.lockedBody', { code }) }}
+          </p>
+        </div>
+        <form @submit.prevent="submitGatePassword" class="flex flex-col gap-3">
+          <input id="gate-password" ref="gatePasswordInput" v-model="gatePassword"
+            type="password" class="input" :placeholder="t('lobby.passwordPlaceholder')"
+            maxlength="72" autocomplete="off" required />
+          <div v-if="gateError" class="flex items-center gap-2 text-sm"
+            style="color:#fca5a5; background:rgba(232,57,74,0.1); border:1px solid rgba(232,57,74,0.2); border-radius:10px; padding:0.6rem 0.85rem">
+            ⚠️ {{ gateError }}
+          </div>
+          <button class="btn btn-gold w-full" :disabled="gateSubmitting">
+            {{ gateSubmitting ? t('lobby.joining') : t('room.lockedSubmit') }}
+          </button>
+          <button type="button" class="btn btn-ghost w-full" @click="router.push({ name: 'lobby' })">
+            {{ t('common.back') }}
+          </button>
+        </form>
+      </div>
+    </div>
+
     <!-- Loading -->
-    <div v-if="!game.room" class="flex items-center justify-center min-h-screen">
+    <div v-else-if="!game.room" class="flex items-center justify-center min-h-screen">
       <div class="text-center">
         <div style="font-size:3rem; animation: spinAnim 1s linear infinite; display:inline-block; margin-bottom:1rem">🎰</div>
         <p style="color:var(--text-muted)">{{ t('room.loading') }}</p>
       </div>
     </div>
 
-    <template v-else>
+    <template v-else-if="game.room">
       <!-- ── Sticky Top Bar ── -->
       <header style="border-bottom:1px solid var(--border-dim); backdrop-filter:blur(24px); background:rgba(8,8,18,0.8); position:sticky; top:0; z-index:50">
         <div class="w-full mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style="max-width:1024px">
@@ -311,7 +340,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
@@ -332,6 +361,13 @@ const game   = useGameStore()
 // land on the same broadcast channel.
 const code          = String(route.params.code || '').toUpperCase()
 const copied        = ref(false)
+
+// Password gate, shown when an invite link leads to a locked room.
+const gateOpen           = ref(false)
+const gatePassword       = ref('')
+const gateError          = ref('')
+const gateSubmitting     = ref(false)
+const gatePasswordInput  = ref(null)
 const actionLoading = ref(false)
 const spinImages    = ref([1, 1, 1])
 const historyOpen   = ref(true)
@@ -453,7 +489,10 @@ function stopSpinAnimation() { if (spinInterval) clearInterval(spinInterval); sp
 let channel = null
 function subscribeChannel() {
   const echo = getEcho()
-  channel = echo.channel(`game.${code}`)
+  // Private: the server only signs this subscription for players seated in the
+  // room, so the feed's balances and settlement never reach a bystander who
+  // happens to have the code.
+  channel = echo.private(`game.${code}`)
   channel
     .listen('.PlayerJoined', (e) => {
       game.addPlayerJoined(e.user)
@@ -562,6 +601,61 @@ async function loadRoom() {
   return data
 }
 
+/**
+ * Take the seat and start the round view. Returns false when the room turned
+ * out to be locked, which leaves the gate on screen waiting for a password.
+ */
+async function enterRoom(room, password = null) {
+  // Not a member yet? This is either an invite link or a first visit — join now.
+  // Members who come back after closing the tab are already in the list.
+  if (!(room.players || []).some(p => p.id === auth.user?.id)) {
+    try {
+      await api.post(`/games/${code}/join`, password === null ? {} : { password })
+      room = await loadRoom()
+    } catch (e) {
+      if (e.response?.data?.password_required) {
+        gateOpen.value = true
+        gateError.value = password === null ? '' : (e.response?.data?.message || '')
+        gatePassword.value = ''
+        await nextTick()
+        gatePasswordInput.value?.focus()
+        return false
+      }
+
+      game.addToast(e.response?.data?.message || t('toast.joinFailed'), 'loss')
+      router.push({ name: 'lobby' })
+      return false
+    }
+  }
+
+  gateOpen.value = false
+
+  // Remember the room so the lobby can offer a one-click rejoin next visit
+  setLastRoom(room.code)
+
+  game.setRoom(room)
+  game.setMyBets(room.bets || [], auth.user?.id)
+  if (room.status === 'spinning') { startSpinAnimation(); startMusic() }
+  subscribeChannel()
+  startPolling()
+  return true
+}
+
+async function submitGatePassword() {
+  gateError.value = ''
+  gateSubmitting.value = true
+  try {
+    const room = await loadRoom()
+    await enterRoom(room, gatePassword.value)
+  } catch {
+    clearLastRoom()
+    game.addToast(t('toast.roomGone'), 'loss')
+    router.push({ name: 'lobby' })
+  } finally {
+    gateSubmitting.value = false
+  }
+}
+
 onMounted(async () => {
   let room
   try {
@@ -573,29 +667,17 @@ onMounted(async () => {
     return
   }
 
-  // Not a member yet? This is either an invite link or a first visit — join now.
-  // Members who come back after closing the tab are already in the list.
-  if (!(room.players || []).some(p => p.id === auth.user?.id)) {
-    try {
-      await api.post(`/games/${code}/join`)
-      room = await loadRoom()
-    } catch (e) {
-      game.addToast(e.response?.data?.message || t('toast.joinFailed'), 'loss')
-      router.push({ name: 'lobby' })
-      return
-    }
-  }
+  await enterRoom(room)
+})
 
-  // Remember the room so the lobby can offer a one-click rejoin next visit
-  setLastRoom(room.code)
-
-  game.setRoom(room)
-  game.setMyBets(room.bets || [], auth.user?.id)
-  if (room.status === 'spinning') { startSpinAnimation(); startMusic() }
-  subscribeChannel()
-
-  // Safety net: if a websocket event is missed (flaky connection, Reverb not
-  // running), polling keeps the roster and the round phase correct.
+/**
+ * Safety net: if a websocket event is missed (flaky connection, Reverb not
+ * running), polling keeps the roster and the round phase correct.
+ *
+ * Only started once the player is actually seated — polling from behind the
+ * password gate would just be a stream of previews.
+ */
+function startPolling() {
   pollInterval = setInterval(async () => {
     let fresh
     try { fresh = await loadRoom() } catch { return }
@@ -619,7 +701,7 @@ onMounted(async () => {
       game.setMyBets(fresh.bets || [], auth.user?.id)
     }
   }, 5000)
-})
+}
 
 onUnmounted(() => {
   stopSpinAnimation()

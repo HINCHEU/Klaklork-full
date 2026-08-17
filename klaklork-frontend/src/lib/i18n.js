@@ -89,11 +89,22 @@ const messages = {
       renameError: 'Could not change name',
       errCreate: 'Failed to create room',
       errJoin: 'Failed to join room',
+      errCodeFormat: 'Room codes are 6 letters and numbers.',
       changeNameTip: 'Click to change your name',
+      privateRoom: 'Private room',
+      lockedBadge: 'Private',
+      passwordPlaceholder: 'Room password',
+      privateHint: 'Players will need this password to join. At least 4 characters.',
+      publicHint: 'Anyone with the room code can join.',
+      errPasswordRequired: 'This room is private — enter its password.',
+      errWrongPassword: 'Wrong password. Try again.',
     },
 
     room: {
       loading: 'Loading room…',
+      lockedTitle: 'This room is private',
+      lockedBody: 'Room {code} needs a password to join.',
+      lockedSubmit: '🔓 Join Room',
       soundOn: 'Sound on', soundOff: 'Sound off',
       copied: '✅ Copied!',
       resultSlots: '🎲 Result Slots',
@@ -156,6 +167,8 @@ const messages = {
       spinFailed: 'Spin failed',
       stopFailed: 'Stop failed',
       error: 'Error',
+      tooFast: 'Slow down a moment — too many requests. Try again shortly.',
+      tooFastIn: 'Slow down a moment — try again in {seconds}s.',
     },
 
     responsible: {
@@ -254,11 +267,22 @@ const messages = {
       renameError: 'មិនអាចប្តូរឈ្មោះបានទេ',
       errCreate: 'បង្កើតបន្ទប់មិនបានទេ',
       errJoin: 'ចូលរួមបន្ទប់មិនបានទេ',
+      errCodeFormat: 'លេខកូដបន្ទប់មាន ៦ តួអក្សរ និងលេខ។',
       changeNameTip: 'ចុចដើម្បីប្តូរឈ្មោះ',
+      privateRoom: 'បន្ទប់ឯកជន',
+      lockedBadge: 'ឯកជន',
+      passwordPlaceholder: 'ពាក្យសម្ងាត់បន្ទប់',
+      privateHint: 'អ្នកលេងត្រូវការពាក្យសម្ងាត់នេះដើម្បីចូលរួម។ យ៉ាងតិច ៤ តួ។',
+      publicHint: 'អ្នកណាដែលមានលេខកូដបន្ទប់អាចចូលរួមបាន។',
+      errPasswordRequired: 'បន្ទប់នេះជាឯកជន — សូមបញ្ចូលពាក្យសម្ងាត់។',
+      errWrongPassword: 'ពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូមព្យាយាមម្តងទៀត។',
     },
 
     room: {
       loading: 'កំពុងផ្ទុកបន្ទប់…',
+      lockedTitle: 'បន្ទប់នេះជាបន្ទប់ឯកជន',
+      lockedBody: 'បន្ទប់ {code} ត្រូវការពាក្យសម្ងាត់ដើម្បីចូលរួម។',
+      lockedSubmit: '🔓 ចូលរួមបន្ទប់',
       soundOn: 'បើកសំឡេង', soundOff: 'បិទសំឡេង',
       copied: '✅ ចម្លងរួច!',
       resultSlots: '🎲 លទ្ធផល',
@@ -321,6 +345,8 @@ const messages = {
       spinFailed: 'បង្វិលមិនបានទេ',
       stopFailed: 'ឈប់មិនបានទេ',
       error: 'មានបញ្ហា',
+      tooFast: 'សូមបន្ថយល្បឿន — សំណើច្រើនពេក។ សូមព្យាយាមម្តងទៀតក្នុងពេលឆាប់ៗ។',
+      tooFastIn: 'សូមបន្ថយល្បឿន — សូមព្យាយាមម្តងទៀតក្នុងរយៈពេល {seconds} វិនាទី។',
     },
 
     responsible: {
