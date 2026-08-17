@@ -27,9 +27,23 @@ export const setToken = (t) => write(TOKEN_KEY, t)
 export const getLastName = () => read(NAME_KEY)
 export const setLastName = (n) => write(NAME_KEY, n)
 
+/**
+ * What a room code is allowed to look like — mirrors GameRoom::CODE_PATTERN on
+ * the API. Codes reach us from places we do not control (an invite link, a
+ * typed field, a stale localStorage entry), and they get interpolated into
+ * request paths and channel names, so they are checked before they are used
+ * rather than after.
+ */
+const CODE_RE = /^[A-HJ-NP-Za-hj-np-z2-9]{6}$/
+
+export const isValidRoomCode = (code) => typeof code === 'string' && CODE_RE.test(code)
+
 /** Last room the player was in, used for the "rejoin" prompt in the lobby. */
-export const getLastRoom = () => read(ROOM_KEY)
-export const setLastRoom = (code) => write(ROOM_KEY, code)
+export const getLastRoom = () => {
+  const code = read(ROOM_KEY)
+  return isValidRoomCode(code) ? code.toUpperCase() : null
+}
+export const setLastRoom = (code) => write(ROOM_KEY, isValidRoomCode(code) ? code.toUpperCase() : null)
 export const clearLastRoom = () => write(ROOM_KEY, null)
 
 /** Wipe the session (keeps the remembered name for convenience). */

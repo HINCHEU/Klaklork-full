@@ -87,8 +87,12 @@
                   🎮
                 </div>
                 <div>
-                  <div style="font-size:1rem; font-weight:800; letter-spacing:0.08em; color:var(--text-primary)">
+                  <div style="font-size:1rem; font-weight:800; letter-spacing:0.08em; color:var(--text-primary); display:flex; align-items:center; gap:0.4rem">
                     {{ room.code }}
+                    <span v-if="room.is_private" :title="t('lobby.privateRoom')"
+                      style="font-size:0.72rem; letter-spacing:0; font-weight:700; color:var(--gold); background:rgba(245,200,66,0.12); border:1px solid rgba(245,200,66,0.25); border-radius:6px; padding:1px 6px">
+                      🔒 {{ t('lobby.lockedBadge') }}
+                    </span>
                   </div>
                   <div style="font-size:0.78rem; color:var(--text-muted)">
                     {{ t('lobby.hostLine') }} <span style="color:var(--text-primary)">{{ room.host?.name }}</span>
@@ -139,6 +143,20 @@
                 <input id="create-max-players" v-model.number="createForm.max_players"
                   type="number" class="input" min="2" max="20" required />
               </div>
+              <div>
+                <label style="display:flex; align-items:center; gap:0.55rem; cursor:pointer">
+                  <input id="create-private" type="checkbox" v-model="createPrivate"
+                    style="width:16px; height:16px; accent-color:var(--gold); cursor:pointer" />
+                  <span class="label" style="margin:0; cursor:pointer">{{ t('lobby.privateRoom') }}</span>
+                </label>
+                <input v-if="createPrivate" id="create-password" v-model="createForm.password"
+                  type="password" class="input" style="margin-top:0.6rem"
+                  :placeholder="t('lobby.passwordPlaceholder')"
+                  minlength="4" maxlength="72" autocomplete="new-password" required />
+                <p style="font-size:0.72rem; color:var(--text-faint); line-height:1.5; margin-top:0.4rem">
+                  {{ createPrivate ? t('lobby.privateHint') : t('lobby.publicHint') }}
+                </p>
+              </div>
               <div v-if="createError" class="flex items-center gap-2 text-sm"
                 style="color:#fca5a5; background:rgba(232,57,74,0.1); border:1px solid rgba(232,57,74,0.2); border-radius:10px; padding:0.6rem 0.85rem">
                 ⚠️ {{ createError }}
@@ -161,6 +179,12 @@
                 maxlength="8"
                 style="text-transform: uppercase; letter-spacing: 0.18em; font-weight:800; font-size:1rem; text-align:center"
                 required />
+              <!-- Only appears once the server says this room is locked, so an
+                   open room is still a one-field join. -->
+              <input v-if="joinNeedsPassword" id="join-password" ref="joinPasswordInput"
+                v-model="joinPassword" type="password" class="input"
+                :placeholder="t('lobby.passwordPlaceholder')"
+                maxlength="72" autocomplete="off" required />
               <div v-if="joinError" class="flex items-center gap-2 text-sm"
                 style="color:#fca5a5; background:rgba(232,57,74,0.1); border:1px solid rgba(232,57,74,0.2); border-radius:10px; padding:0.6rem 0.85rem">
                 ⚠️ {{ joinError }}
@@ -212,11 +236,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/lib/api'
-import { getLastRoom, clearLastRoom } from '@/lib/session'
+import { getLastRoom, clearLastRoom, isValidRoomCode } from '@/lib/session'
 import PlayResponsibly from '@/components/PlayResponsibly.vue'
 import LanguageToggle from '@/components/LanguageToggle.vue'
 import { useI18n } from '@/lib/i18n'
@@ -225,13 +249,20 @@ const { t }      = useI18n()
 const auth       = useAuthStore()
 const router     = useRouter()
 const openRooms  = ref([])
-const createForm = ref({ bet_amount: 500, max_players: 10 })
+const createForm = ref({ bet_amount: 500, max_players: 10, password: '' })
+const createPrivate = ref(false)
 const joinCode   = ref('')
 const createError = ref('')
 const joinError  = ref('')
 const creating   = ref(false)
 const joining    = ref(false)
 const resumeRoom = ref(null)
+
+// The password box only exists after the server tells us a room is locked, so
+// joining an open room stays a single field.
+const joinPassword      = ref('')
+const joinNeedsPassword = ref(false)
+const joinPasswordInput = ref(null)
 
 const renaming    = ref(false)
 const renameValue = ref('')
@@ -273,7 +304,12 @@ function dismissResume() { clearLastRoom(); resumeRoom.value = null }
 async function createRoom() {
   createError.value = ''; creating.value = true
   try {
-    const { data } = await api.post('/games', createForm.value)
+    // Only send a password when the room is meant to be locked — an empty
+    // string would otherwise fail the server's minimum-length rule.
+    const payload = { ...createForm.value }
+    if (!createPrivate.value) delete payload.password
+
+    const { data } = await api.post('/games', payload)
     router.push({ name: 'game', params: { code: data.code } })
   } catch (e) {
     createError.value = e.response?.data?.message || t('lobby.errCreate')
@@ -281,16 +317,48 @@ async function createRoom() {
 }
 
 async function joinRoom() {
-  joinError.value = ''; joining.value = true
+  joinError.value = ''
+
+  // This is the one place a player types something that becomes part of a
+  // request path, so it is checked for shape before it is sent rather than
+  // relying on the server to reject whatever arrives.
+  const code = String(joinCode.value || '').trim().toUpperCase()
+  if (!isValidRoomCode(code)) {
+    joinError.value = t('lobby.errCodeFormat')
+    return
+  }
+
+  joining.value = true
   try {
-    await api.post(`/games/${joinCode.value.toUpperCase()}/join`)
-    router.push({ name: 'game', params: { code: joinCode.value.toUpperCase() } })
+    const body = joinNeedsPassword.value ? { password: joinPassword.value } : {}
+    await api.post(`/games/${code}/join`, body)
+    router.push({ name: 'game', params: { code } })
   } catch (e) {
     joinError.value = e.response?.data?.message || t('lobby.errJoin')
+
+    // The room is locked. Reveal the password box (or keep it up after a wrong
+    // guess) and put the cursor in it, rather than making them start over.
+    if (e.response?.data?.password_required) {
+      joinNeedsPassword.value = true
+      joinPassword.value = ''
+      await nextTick()
+      joinPasswordInput.value?.focus()
+    }
   } finally { joining.value = false }
 }
 
-async function quickJoin(code) { joinCode.value = code; await joinRoom() }
+/**
+ * Clicking a room card. A different room than the one the password box was
+ * opened for means the box no longer applies, so it resets.
+ */
+async function quickJoin(code) {
+  if (joinCode.value !== code) {
+    joinNeedsPassword.value = false
+    joinPassword.value = ''
+  }
+  joinCode.value = code
+  await joinRoom()
+}
 
 function openRename() {
   renameValue.value = auth.user?.name || ''
