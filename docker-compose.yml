@@ -1,0 +1,121 @@
+# =============================================================================
+# Klaklork — Docker Compose (Test / Staging Deployment)
+# =============================================================================
+# Usage:
+#   cp .env.example .env   # edit passwords & secrets
+#   make install            # first-time setup
+#   make update             # pull & rebuild
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # MySQL 8
+  # ---------------------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: klaklork-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+      MYSQL_DATABASE: ${DB_DATABASE:-klaklork}
+      MYSQL_USER: ${DB_USERNAME:-klaklork}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "${DB_PORT_FORWARD:-3307}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_ROOT_PASSWORD:-rootsecret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - klaklork
+
+  # ---------------------------------------------------------------------------
+  # Laravel API  (PHP-FPM + Nginx + Queue Worker + Reverb)
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: ./klaklork-api
+      dockerfile: Dockerfile
+    container_name: klaklork-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-klaklork}
+      DB_USERNAME: ${DB_USERNAME:-klaklork}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      CACHE_STORE: file
+      SESSION_DRIVER: file
+      QUEUE_CONNECTION: database
+      REVERB_HOST: 0.0.0.0
+      REVERB_PORT: 8080
+    volumes:
+      - app_storage:/var/www/html/storage
+    ports:
+      - "${APP_PORT:-8000}:80"
+      - "${REVERB_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - klaklork
+
+  # ---------------------------------------------------------------------------
+  # Vue 3 Frontend  (Nginx serving built SPA)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./klaklork-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_REVERB_APP_KEY: ${VITE_REVERB_APP_KEY:-}
+        VITE_REVERB_HOST: ${VITE_REVERB_HOST:-localhost}
+        VITE_REVERB_PORT: ${VITE_REVERB_PORT:-8080}
+        VITE_REVERB_SCHEME: ${VITE_REVERB_SCHEME:-http}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api}
+    container_name: klaklork-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - app
+    networks:
+      - klaklork
+
+  # ---------------------------------------------------------------------------
+  # phpMyAdmin (optional — for debugging / test environments)
+  # ---------------------------------------------------------------------------
+  phpmyadmin:
+    image: phpmyadmin:5
+    container_name: klaklork-pma
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - debug
+    networks:
+      - klaklork
+
+volumes:
+  db_data:
+  app_storage:
+
+networks:
+  klaklork:
+    driver: bridge
