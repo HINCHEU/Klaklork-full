@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\GameRoom;
 use App\Models\User;
+use App\Events\HostChanged;
 use App\Events\PlayerJoined;
 use App\Events\PlayerLeft;
 use App\Events\SpinStarted;
@@ -58,7 +59,7 @@ class GameRoomController extends Controller
         ]);
 
         // Host automatically joins
-        $room->players()->attach($request->user()->id, ['joined_at' => now()]);
+        $room->players()->attach($request->user()->id, ['joined_at' => now(), 'last_seen_at' => now()]);
 
         return response()->json($room->load('host:id,name', 'players:id,name,balance'), 201);
     }
@@ -81,7 +82,7 @@ class GameRoomController extends Controller
 
         // A seated player's poll is the heartbeat that keeps the room open.
         // Outsiders reading the preview do not count — they are not at the table.
-        $room->markActive();
+        $room->markActive($request->user()->id);
 
         $room->load(['host:id,name', 'players:id,name,balance', 'bets.user:id,name'])
             ->loadCount('players');
@@ -161,8 +162,8 @@ class GameRoomController extends Controller
             return response()->json(['message' => 'Room is full.'], 422);
         }
 
-        $room->players()->attach($userId, ['joined_at' => now()]);
-        $room->markActive();
+        $room->players()->attach($userId, ['joined_at' => now(), 'last_seen_at' => now()]);
+        $room->markActive($userId);
 
         try { broadcast(new PlayerJoined($room, $request->user()))->toOthers(); } catch (\Throwable) {}
 
@@ -181,20 +182,38 @@ class GameRoomController extends Controller
             return response()->json(['message' => 'You are not in this room.'], 403);
         }
 
-        $room->players()->detach($userId);
+        $handoff = DB::transaction(function () use ($room, $userId) {
+            $room = GameRoom::whereKey($room->id)->lockForUpdate()->first();
 
-        // Last one out closes the room for good
-        if ($room->players()->count() === 0) {
-            $room->delete();
+            $room->players()->detach($userId);
+
+            // Last one out closes the room for good
+            if ($room->players()->count() === 0) {
+                $room->delete();
+                return 'closed';
+            }
+
+            // Host left but players remain — hand the bank to the next player.
+            // Mid-round, that calls the round off and refunds it; see handHostTo.
+            if ($room->host_user_id === $userId) {
+                $next = $room->players()->first();
+                return ['host' => $next, 'round_voided' => $room->handHostTo($next)];
+            }
+
+            return null;
+        });
+
+        if ($handoff === 'closed') {
             return response()->json(['message' => 'Room closed.']);
         }
 
-        // Host left but players remain — hand the room to the next player
-        if ($room->host_user_id === $userId) {
-            $room->update(['host_user_id' => $room->players()->first()->id]);
-        }
+        $room = $room->fresh();
 
-        try { broadcast(new PlayerLeft($room->fresh(), $request->user()))->toOthers(); } catch (\Throwable) {}
+        try { broadcast(new PlayerLeft($room, $request->user()))->toOthers(); } catch (\Throwable) {}
+
+        if ($handoff !== null) {
+            try { broadcast(new HostChanged($room, $handoff['host'], $handoff['round_voided'])); } catch (\Throwable) {}
+        }
 
         return response()->json(['message' => 'Left room.']);
     }

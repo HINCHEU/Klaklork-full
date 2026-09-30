@@ -58,7 +58,7 @@ class GameRoom extends Model
     public function players(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'game_players')
-            ->withPivot('joined_at')
+            ->withPivot('joined_at', 'last_seen_at')
             ->orderByPivot('joined_at');
     }
 
@@ -88,21 +88,38 @@ class GameRoom extends Model
     public const IDLE_MINUTES = 30;
 
     /**
+     * A host silent for this long is replaced by rooms:reassign-absent-hosts.
+     *
+     * Browsers slow timers in background tabs to about once a minute, so this
+     * has to sit comfortably above that — a host who merely switched tabs must
+     * not lose the bank.
+     */
+    public const HOST_AWAY_MINUTES = 3;
+
+    /**
      * Record that a seated player is still here.
      *
-     * Called on every member poll, so it only writes once a minute — the idle
-     * cutoff is measured in tens of minutes and does not need more precision.
-     * Goes straight to the table so updated_at keeps meaning "the room changed".
+     * Called on every member poll (every 5 seconds per player), so both writes
+     * are conditional: they only land when the stored value has gone stale, and
+     * cost a no-op update otherwise. The room goes straight to the table so
+     * updated_at keeps meaning "the room changed".
      */
-    public function markActive(): void
+    public function markActive(int $userId): void
     {
-        if ($this->last_active_at?->gt(now()->subMinute())) {
-            return;
-        }
+        $now = now();
 
-        $this->last_active_at = now();
+        self::whereKey($this->id)
+            ->where(fn ($q) => $q->whereNull('last_active_at')->orWhere('last_active_at', '<', $now->copy()->subMinute()))
+            ->toBase()
+            ->update(['last_active_at' => $now]);
 
-        self::whereKey($this->id)->toBase()->update(['last_active_at' => $this->last_active_at]);
+        DB::table('game_players')
+            ->where('game_room_id', $this->id)
+            ->where('user_id', $userId)
+            ->where(fn ($q) => $q->whereNull('last_seen_at')->orWhere('last_seen_at', '<', $now->copy()->subSeconds(30)))
+            ->update(['last_seen_at' => $now]);
+
+        $this->last_active_at = $now;
     }
 
     /**
@@ -110,12 +127,6 @@ class GameRoom extends Model
      *
      * Idleness is re-read under the row lock, so a player who polls between the
      * sweep's query and this call keeps their room. Returns whether it closed.
-     *
-     * Stakes leave a player's balance when the bet is placed, and only
-     * settlement puts them anywhere. A room abandoned mid-round (betting or
-     * spinning) has never been settled, so those stakes go back to the players
-     * before the bets are deleted with the room — otherwise the money simply
-     * vanishes. A finished round's bets are already paid out and are left alone.
      */
     public function closeIfIdleSince(\DateTimeInterface $cutoff): bool
     {
@@ -127,16 +138,105 @@ class GameRoom extends Model
                 return false;
             }
 
-            if (in_array($room->status, ['betting', 'spinning'], true)) {
-                foreach ($room->bets()->get() as $bet) {
-                    User::whereKey($bet->user_id)->increment('balance', $bet->amount);
-                }
-            }
-
+            $room->refundOpenStakes();
             $room->delete();
 
             return true;
         });
+    }
+
+    /**
+     * Hand the bank to someone else, if the host has not been seen since $cutoff.
+     *
+     * The new host is the earliest-joined player who has been seen since the
+     * cutoff; with nobody active there is no one to hand to, and the idle
+     * cleanup will deal with the room instead. Rechecked under the row lock, so
+     * a host who comes back mid-sweep keeps the room.
+     *
+     * @return array{host: User, round_voided: bool}|null null when nothing changed
+     */
+    public function reassignHostIfAbsentSince(\DateTimeInterface $cutoff): ?array
+    {
+        return DB::transaction(function () use ($cutoff) {
+            $room = self::whereKey($this->id)->lockForUpdate()->first();
+
+            if ($room === null) {
+                return null;
+            }
+
+            $seen = fn ($q) => $q->where(fn ($q) => $q
+                ->where('game_players.last_seen_at', '>=', $cutoff)
+                ->orWhere(fn ($q) => $q->whereNull('game_players.last_seen_at')->where('game_players.joined_at', '>=', $cutoff)));
+
+            $hostPresent = $room->players()
+                ->wherePivot('user_id', $room->host_user_id)
+                ->where($seen)
+                ->exists();
+
+            if ($hostPresent) {
+                return null;
+            }
+
+            $next = $room->players()
+                ->wherePivot('user_id', '!=', $room->host_user_id)
+                ->where($seen)
+                ->first();
+
+            if ($next === null) {
+                return null;
+            }
+
+            return ['host' => $next, 'round_voided' => $room->handHostTo($next)];
+        });
+    }
+
+    /**
+     * Make $user the host (the banker). Must run under this room's row lock.
+     *
+     * The banker pays every winner and collects every loss, so a round already
+     * in play belongs to the banker it was staked against. Passing it to someone
+     * else mid-round would make them cover bets they never agreed to — and they
+     * may have a bet of their own on the table. So a round in betting or
+     * spinning is called off: every stake goes back and the room returns to
+     * waiting, for the new host to open afresh.
+     *
+     * @return bool whether a round in play was called off
+     */
+    public function handHostTo(User $user): bool
+    {
+        $voided = in_array($this->status, ['betting', 'spinning'], true);
+
+        if ($voided) {
+            $this->refundOpenStakes();
+            $this->bets()->delete();
+        }
+
+        $this->update([
+            'host_user_id' => $user->id,
+            'status'       => $voided ? 'waiting' : $this->status,
+            'result'       => $voided ? null : $this->result,
+        ]);
+
+        return $voided;
+    }
+
+    /**
+     * Stakes leave a player's balance when the bet is placed, and only
+     * settlement puts them anywhere. A round that ends any other way (the room
+     * closing, the banker changing) has to give them back, or the money simply
+     * vanishes. A finished round's bets are already paid out and are left alone.
+     *
+     * Must run under this room's row lock.
+     */
+    private function refundOpenStakes(): void
+    {
+        if (! in_array($this->status, ['betting', 'spinning'], true)) {
+            return;
+        }
+
+        foreach ($this->bets()->get() as $bet) {
+            User::whereKey($bet->user_id)->increment('balance', $bet->amount);
+        }
     }
 
     /**
