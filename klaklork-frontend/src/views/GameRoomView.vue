@@ -546,6 +546,7 @@ function cancelRound() {
  * keep the room remembered, so its resume card offers the way back in.
  */
 function leftWhileAway() {
+  if (leaving) return
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null }
   stopSpinAnimation()
   stopMusic()
@@ -629,7 +630,12 @@ function copyInvite() {
   copied.value = true; setTimeout(() => { copied.value = false }, 2000)
 }
 
+// Set while our own Leave is in flight, so its PlayerLeft echo is not
+// mistaken for being unseated (the socket may not have an id to exclude yet).
+let leaving = false
+
 async function leaveRoom() {
+  leaving = true
   try { await api.post(`/games/${code}/leave`) } catch {}
   clearLastRoom()
   disconnectEcho(); game.reset(); router.push({ name: 'lobby' })

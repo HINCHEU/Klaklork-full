@@ -6,6 +6,16 @@ window.Pusher = Pusher
 
 let echo = null
 
+// Tell the API which socket is ours, so broadcast(...)->toOthers() can leave us
+// out. Echo only does this for the global axios, and the app uses its own
+// instance — without the header every player got their own events back: a bet
+// counted twice on the bettor's board, a Leave echoed as being unseated.
+api.interceptors.request.use(config => {
+  const socketId = echo?.socketId()
+  if (socketId) config.headers['X-Socket-ID'] = socketId
+  return config
+})
+
 export function getEcho() {
   if (!echo) {
     echo = new Echo({
