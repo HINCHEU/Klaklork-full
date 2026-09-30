@@ -54,6 +54,7 @@ class GameRoomController extends Controller
             // The 'hashed' cast turns this into a bcrypt hash on the way in.
             'password'     => $data['password'] ?? null,
             'status'       => 'waiting',
+            'last_active_at' => now(),
         ]);
 
         // Host automatically joins
@@ -77,6 +78,10 @@ class GameRoomController extends Controller
         if (! $room->hasPlayer($request->user()->id)) {
             return response()->json($this->preview($room));
         }
+
+        // A seated player's poll is the heartbeat that keeps the room open.
+        // Outsiders reading the preview do not count — they are not at the table.
+        $room->markActive();
 
         $room->load(['host:id,name', 'players:id,name,balance', 'bets.user:id,name'])
             ->loadCount('players');
@@ -157,6 +162,7 @@ class GameRoomController extends Controller
         }
 
         $room->players()->attach($userId, ['joined_at' => now()]);
+        $room->markActive();
 
         try { broadcast(new PlayerJoined($room, $request->user()))->toOthers(); } catch (\Throwable) {}
 

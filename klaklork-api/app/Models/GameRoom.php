@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\DB;
 
 class GameRoom extends Model
 {
@@ -18,12 +19,14 @@ class GameRoom extends Model
         'max_players',
         'password',
         'result',
+        'last_active_at',
     ];
 
     protected $casts = [
         'result' => 'array',
         'bet_amount' => 'integer',
         'max_players' => 'integer',
+        'last_active_at' => 'datetime',
         // Hashes on assignment, so a plaintext room password never reaches a
         // column — and never gets logged by a query listener either.
         'password' => 'hashed',
@@ -75,6 +78,59 @@ class GameRoom extends Model
     {
         return $userId !== null
             && $this->players()->wherePivot('user_id', $userId)->exists();
+    }
+
+    /**
+     * A room nobody seated in has touched for this long is closed by
+     * rooms:close-idle. The client polls every few seconds while it is open, so
+     * this is "every tab on the table has been closed for half an hour".
+     */
+    public const IDLE_MINUTES = 30;
+
+    /**
+     * Record that a seated player is still here.
+     *
+     * Called on every member poll, so it only writes once a minute — the idle
+     * cutoff is measured in tens of minutes and does not need more precision.
+     * Goes straight to the table so updated_at keeps meaning "the room changed".
+     */
+    public function markActive(): void
+    {
+        if ($this->last_active_at?->gt(now()->subMinute())) {
+            return;
+        }
+
+        $this->last_active_at = now();
+
+        self::whereKey($this->id)->toBase()->update(['last_active_at' => $this->last_active_at]);
+    }
+
+    /**
+     * Close the room for good.
+     *
+     * Stakes leave a player's balance when the bet is placed, and only
+     * settlement puts them anywhere. A room abandoned mid-round (betting or
+     * spinning) has never been settled, so those stakes go back to the players
+     * before the bets are deleted with the room — otherwise the money simply
+     * vanishes. A finished round's bets are already paid out and are left alone.
+     */
+    public function close(): void
+    {
+        DB::transaction(function () {
+            $room = self::whereKey($this->id)->lockForUpdate()->first();
+
+            if ($room === null) {
+                return;
+            }
+
+            if (in_array($room->status, ['betting', 'spinning'], true)) {
+                foreach ($room->bets()->get() as $bet) {
+                    User::whereKey($bet->user_id)->increment('balance', $bet->amount);
+                }
+            }
+
+            $room->delete();
+        });
     }
 
     /**
