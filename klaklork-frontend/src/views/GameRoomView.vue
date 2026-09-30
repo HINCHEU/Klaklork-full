@@ -680,7 +680,17 @@ onMounted(async () => {
 function startPolling() {
   pollInterval = setInterval(async () => {
     let fresh
-    try { fresh = await loadRoom() } catch { return }
+    try { fresh = await loadRoom() } catch (e) {
+      // The room was closed out from under us (idle cleanup, or everyone left
+      // while this tab slept). Anything else is a blip — try again next tick.
+      if (e.response?.status === 404) {
+        clearInterval(pollInterval); pollInterval = null
+        clearLastRoom()
+        game.addToast(t('toast.roomGone'), 'loss')
+        disconnectEcho(); game.reset(); router.push({ name: 'lobby' })
+      }
+      return
+    }
 
     game.room    = fresh
     game.players = fresh.players || []

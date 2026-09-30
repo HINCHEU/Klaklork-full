@@ -294,8 +294,10 @@ async function checkResumeRoom() {
   try {
     const { data } = await api.get(`/games/${code}`)
     resumeRoom.value = data
-  } catch {
-    clearLastRoom()   // room no longer exists
+  } catch (e) {
+    // Only forget the room when it is really gone — a network blip or a
+    // rate-limit answer should not throw away the way back to the table.
+    if (e.response?.status === 404) clearLastRoom()
   }
 }
 
