@@ -233,7 +233,7 @@ class GameRoomController extends Controller
             // settlement that is paying them out.
             //
             // The host check above read a snapshot; the bank can change hands
-            // since (rooms:reassign-absent-hosts), so the claim re-asserts it.
+            // since (rooms:remove-absent-players), so the claim re-asserts it.
             $claimed = GameRoom::whereKey($room->id)
                 ->where('host_user_id', $room->host_user_id)
                 ->whereIn('status', ['waiting', 'finished'])

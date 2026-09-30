@@ -1,6 +1,7 @@
 <?php
 
 use App\Events\HostChanged;
+use App\Events\PlayerLeft;
 use App\Models\GameRoom;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Inspiring;
@@ -38,38 +39,45 @@ Artisan::command('rooms:close-idle', function () {
 })->purpose('Close rooms with no active players for '.GameRoom::IDLE_MINUTES.' minutes');
 
 /**
- * Hand the bank on when the host has gone silent for GameRoom::HOST_AWAY_MINUTES.
+ * Unseat players whose tab has been silent for GameRoom::AWAY_MINUTES.
  *
- * Only the host can open betting, spin, or stop, so a host who closes the tab
- * leaves everyone else at a table that can never move again — possibly mid-spin
- * with their stakes held. The earliest-joined player still polling takes over.
+ * Closing the tab never reaches /leave, so without this a player keeps their
+ * seat forever — counting against max_players and, if they were the host,
+ * leaving everyone else at a table only they could run. Removal works exactly
+ * like pressing Leave, bank handoff included.
  */
-Artisan::command('rooms:reassign-absent-hosts', function () {
-    $cutoff = now()->subMinutes(GameRoom::HOST_AWAY_MINUTES);
-    $moved  = 0;
+Artisan::command('rooms:remove-absent-players', function () {
+    $cutoff  = now()->subMinutes(GameRoom::AWAY_MINUTES);
+    $removed = 0;
 
-    // Rooms whose host's seat has gone quiet. The recheck, and the choice of
-    // who takes over, happen under the room lock in reassignHostIfAbsentSince.
+    // Rooms with at least one quiet seat. Who actually goes, and who takes the
+    // bank, is decided under the room lock in removeAbsentPlayersSince.
     GameRoom::whereExists(fn ($q) => $q->select(DB::raw(1))
             ->from('game_players')
             ->whereColumn('game_players.game_room_id', 'game_rooms.id')
-            ->whereColumn('game_players.user_id', 'game_rooms.host_user_id')
             ->whereRaw('coalesce(game_players.last_seen_at, game_players.joined_at) < ?', [$cutoff]))
         ->lazyById()
-        ->each(function (GameRoom $room) use ($cutoff, &$moved) {
-            $handoff = $room->reassignHostIfAbsentSince($cutoff);
+        ->each(function (GameRoom $room) use ($cutoff, &$removed) {
+            $outcome = $room->removeAbsentPlayersSince($cutoff);
 
-            if ($handoff === null) {
+            if ($outcome === null) {
                 return;
             }
 
-            $moved++;
+            $removed += $outcome['left']->count();
+            $room = $room->fresh();
 
-            try { broadcast(new HostChanged($room->fresh(), $handoff['host'], $handoff['round_voided'])); } catch (\Throwable) {}
+            foreach ($outcome['left'] as $user) {
+                try { broadcast(new PlayerLeft($room, $user)); } catch (\Throwable) {}
+            }
+
+            if ($outcome['host'] !== null) {
+                try { broadcast(new HostChanged($room, $outcome['host'], $outcome['round_voided'])); } catch (\Throwable) {}
+            }
         });
 
-    $this->info("Reassigned {$moved} absent host(s).");
-})->purpose('Hand the bank to an active player when the host has been gone for '.GameRoom::HOST_AWAY_MINUTES.' minutes');
+    $this->info("Removed {$removed} absent player(s).");
+})->purpose('Unseat players whose tab has been silent for '.GameRoom::AWAY_MINUTES.' minutes');
 
 Schedule::command('rooms:close-idle')->everyMinute()->withoutOverlapping();
-Schedule::command('rooms:reassign-absent-hosts')->everyMinute()->withoutOverlapping();
+Schedule::command('rooms:remove-absent-players')->everyMinute()->withoutOverlapping();

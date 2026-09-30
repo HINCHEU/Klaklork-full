@@ -89,13 +89,16 @@ class GameRoom extends Model
     public const IDLE_MINUTES = 30;
 
     /**
-     * A host silent for this long is replaced by rooms:reassign-absent-hosts.
+     * A player whose tab has been silent this long has left the room, and is
+     * removed by rooms:remove-absent-players exactly as if they had pressed
+     * Leave — the host included, which hands the bank on.
      *
-     * Browsers slow timers in background tabs to about once a minute, so this
-     * has to sit comfortably above that — a host who merely switched tabs must
-     * not lose the bank.
+     * A browser cannot reliably tell the server that a tab closed (a refresh
+     * looks the same), so absence is the signal. Browsers slow timers in
+     * background tabs to about once a minute, so this sits comfortably above
+     * that: a player who merely switched tabs keeps their seat.
      */
-    public const HOST_AWAY_MINUTES = 3;
+    public const AWAY_MINUTES = 3;
 
     /**
      * Record that a seated player is still here.
@@ -151,16 +154,23 @@ class GameRoom extends Model
     }
 
     /**
-     * Hand the bank to someone else, if the host has not been seen since $cutoff.
+     * Unseat every player not seen since $cutoff, as long as someone is left.
      *
-     * The new host is the earliest-joined player who has been seen since the
-     * cutoff; with nobody active there is no one to hand to, and the idle
-     * cleanup will deal with the room instead. Rechecked under the row lock, so
-     * a host who comes back mid-sweep keeps the room.
+     * With nobody active the room is left exactly as it is: that is an empty
+     * table, which rooms:close-idle closes after IDLE_MINUTES — and until then
+     * anyone coming back finds their seat. Once a single player is active
+     * again, the absent ones are removed. If the host is among them, the bank
+     * passes to the earliest-joined player still here (see handHostTo).
      *
-     * @return array{host: User, round_voided: bool}|null null when nothing changed
+     * Absent players' bets stay where they are: settlement pays bets, not
+     * seats, so a player who leaves mid-round is still settled with everyone.
+     *
+     * Rechecked under the row lock, so a player who polls mid-sweep stays.
+     *
+     * @return array{left: \Illuminate\Support\Collection<int, User>, host: ?User, round_voided: bool}|null
+     *         null when nobody was removed
      */
-    public function reassignHostIfAbsentSince(\DateTimeInterface $cutoff): ?array
+    public function removeAbsentPlayersSince(\DateTimeInterface $cutoff): ?array
     {
         return DB::transaction(function () use ($cutoff) {
             $room = self::whereKey($this->id)->lockForUpdate()->first();
@@ -169,29 +179,26 @@ class GameRoom extends Model
                 return null;
             }
 
-            $seen = fn ($q) => $q->where(fn ($q) => $q
-                ->where('game_players.last_seen_at', '>=', $cutoff)
-                ->orWhere(fn ($q) => $q->whereNull('game_players.last_seen_at')->where('game_players.joined_at', '>=', $cutoff)));
+            // A seat that never recorded a poll counts from when it was taken.
+            [$active, $absent] = $room->players()->get()->partition(
+                fn (User $p) => Carbon::parse($p->pivot->last_seen_at ?? $p->pivot->joined_at)->gte($cutoff)
+            );
 
-            $hostPresent = $room->players()
-                ->wherePivot('user_id', $room->host_user_id)
-                ->where($seen)
-                ->exists();
-
-            if ($hostPresent) {
+            if ($absent->isEmpty() || $active->isEmpty()) {
                 return null;
             }
 
-            $next = $room->players()
-                ->wherePivot('user_id', '!=', $room->host_user_id)
-                ->where($seen)
-                ->first();
+            $room->players()->detach($absent->modelKeys());
 
-            if ($next === null) {
-                return null;
+            $host = null;
+            $voided = false;
+
+            if ($absent->contains('id', $room->host_user_id)) {
+                $host   = $active->first();   // players() is ordered by joined_at
+                $voided = $room->handHostTo($host);
             }
 
-            return ['host' => $next, 'round_voided' => $room->handHostTo($next)];
+            return ['left' => $absent->values(), 'host' => $host, 'round_voided' => $voided];
         });
     }
 

@@ -62,8 +62,8 @@ class HostHandoffTest extends TestCase
         $this->travel(1)->seconds();
         $this->seat($room, User::factory()->create());
 
-        $this->awayFor(GameRoom::HOST_AWAY_MINUTES + 1, $room, ...$room->players()->where('users.id', '!=', $host->id)->get());
-        $this->artisan('rooms:reassign-absent-hosts')->assertSuccessful();
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room, ...$room->players()->where('users.id', '!=', $host->id)->get());
+        $this->artisan('rooms:remove-absent-players')->assertSuccessful();
 
         $this->assertSame($first->id, $room->fresh()->host_user_id);
         Event::assertDispatched(HostChanged::class, fn ($e) => $e->host->is($first) && ! $e->roundVoided);
@@ -76,8 +76,8 @@ class HostHandoffTest extends TestCase
         $room   = $this->room($host);
         $this->seat($room, $player);
 
-        $this->awayFor(GameRoom::HOST_AWAY_MINUTES + 1, $room, $host, $player);
-        $this->artisan('rooms:reassign-absent-hosts')->assertSuccessful();
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room, $host, $player);
+        $this->artisan('rooms:remove-absent-players')->assertSuccessful();
 
         $this->assertSame($host->id, $room->fresh()->host_user_id);
     }
@@ -92,8 +92,8 @@ class HostHandoffTest extends TestCase
         $this->travel(1)->seconds();
         $this->seat($room, $active);
 
-        $this->awayFor(GameRoom::HOST_AWAY_MINUTES + 1, $room, $active);
-        $this->artisan('rooms:reassign-absent-hosts')->assertSuccessful();
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room, $active);
+        $this->artisan('rooms:remove-absent-players')->assertSuccessful();
 
         $this->assertSame($active->id, $room->fresh()->host_user_id);
     }
@@ -104,8 +104,8 @@ class HostHandoffTest extends TestCase
         $room = $this->room($host);
         $this->seat($room, User::factory()->create());
 
-        $this->awayFor(GameRoom::HOST_AWAY_MINUTES + 1, $room);
-        $this->artisan('rooms:reassign-absent-hosts')->assertSuccessful();
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room);
+        $this->artisan('rooms:remove-absent-players')->assertSuccessful();
 
         $this->assertSame($host->id, $room->fresh()->host_user_id);
     }
@@ -126,8 +126,8 @@ class HostHandoffTest extends TestCase
             Bet::create(['game_room_id' => $room->id, 'user_id' => $user->id, 'animal_slot' => 4, 'amount' => $amount]);
         }
 
-        $this->awayFor(GameRoom::HOST_AWAY_MINUTES + 1, $room, $bettor, $other);
-        $this->artisan('rooms:reassign-absent-hosts')->assertSuccessful();
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room, $bettor, $other);
+        $this->artisan('rooms:remove-absent-players')->assertSuccessful();
 
         $room->refresh();
         $this->assertSame($bettor->id, $room->host_user_id);
@@ -148,8 +148,8 @@ class HostHandoffTest extends TestCase
 
         Bet::create(['game_room_id' => $room->id, 'user_id' => $player->id, 'animal_slot' => 1, 'amount' => 500, 'won_amount' => -500]);
 
-        $this->awayFor(GameRoom::HOST_AWAY_MINUTES + 1, $room, $player);
-        $this->artisan('rooms:reassign-absent-hosts')->assertSuccessful();
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room, $player);
+        $this->artisan('rooms:remove-absent-players')->assertSuccessful();
 
         $room->refresh();
         $this->assertSame($player->id, $room->host_user_id);
@@ -233,8 +233,8 @@ class HostHandoffTest extends TestCase
         $room   = $this->room($host, ['status' => 'spinning']);
         $this->seat($room, $player);
 
-        $this->awayFor(GameRoom::HOST_AWAY_MINUTES + 1, $room, $player);
-        $this->artisan('rooms:reassign-absent-hosts')->assertSuccessful();
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room, $player);
+        $this->artisan('rooms:remove-absent-players')->assertSuccessful();
 
         Sanctum::actingAs($player);
         $this->postJson("/api/games/{$room->code}/open-betting")->assertOk();
