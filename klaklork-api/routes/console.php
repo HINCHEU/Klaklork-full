@@ -79,5 +79,9 @@ Artisan::command('rooms:remove-absent-players', function () {
     $this->info("Removed {$removed} absent player(s).");
 })->purpose('Unseat players whose tab has been silent for '.GameRoom::AWAY_MINUTES.' minutes');
 
-Schedule::command('rooms:close-idle')->everyMinute()->withoutOverlapping();
-Schedule::command('rooms:remove-absent-players')->everyMinute()->withoutOverlapping();
+// The overlap lock must expire quickly. Its default lifetime is 24 hours, and
+// storage/ (where the file cache keeps it) is a persistent volume: a deploy
+// that stops the container mid-sweep would otherwise leave the lock behind and
+// silently switch both sweeps off for a day. A sweep takes about a second.
+Schedule::command('rooms:close-idle')->everyMinute()->withoutOverlapping(2);
+Schedule::command('rooms:remove-absent-players')->everyMinute()->withoutOverlapping(2);

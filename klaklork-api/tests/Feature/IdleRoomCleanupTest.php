@@ -34,6 +34,26 @@ class IdleRoomCleanupTest extends TestCase
         return $room;
     }
 
+    /**
+     * The overlap lock outlives a container that is stopped mid-sweep (storage/
+     * is a persistent volume). With the default 24-hour lifetime, one unlucky
+     * deploy would switch the sweeps off for a day without an error.
+     */
+    public function test_room_sweeps_run_every_minute_with_a_short_lived_overlap_lock(): void
+    {
+        $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+            ->filter(fn ($e) => str_contains($e->command, 'rooms:'))
+            ->keyBy(fn ($e) => preg_replace('/.*(rooms:[a-z-]+).*/', '$1', $e->command));
+
+        $this->assertEqualsCanonicalizing(['rooms:close-idle', 'rooms:remove-absent-players'], $events->keys()->all());
+
+        foreach ($events as $event) {
+            $this->assertSame('* * * * *', $event->expression);
+            $this->assertTrue($event->withoutOverlapping);
+            $this->assertLessThanOrEqual(5, $event->expiresAt);
+        }
+    }
+
     public function test_room_idle_for_thirty_minutes_is_closed(): void
     {
         $room = $this->room(User::factory()->create());
