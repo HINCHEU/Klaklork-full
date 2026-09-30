@@ -517,6 +517,31 @@ function subscribeChannel() {
       startMusic()
     })
     .listen('.SpinResult', (e) => resolveRound(e.result, e.bets, e.settlement))
+    .listen('.HostChanged', (e) => {
+      game.room = { ...game.room, host_user_id: e.host.id }
+      if (e.round_voided) cancelRound()
+      announceNewHost(e.host)
+    })
+}
+
+/**
+ * The bank moved to another player (the host left, or went silent). Handing it
+ * on mid-round calls the round off server-side and refunds every stake, so the
+ * table is cleared and the refunded balance fetched.
+ */
+function cancelRound() {
+  stopSpinAnimation()
+  stopMusic()
+  closePopup()
+  game.resetForNewRound()
+  game.result = null
+  game.settlement = null
+  auth.refreshUser().catch(() => {})
+  game.addToast(t('toast.roundCancelled'), 'info')
+}
+
+function announceNewHost(host) {
+  game.addToast(host.id === auth.user?.id ? t('toast.nowBanker') : t('toast.newBanker', { name: host.name }), 'info')
 }
 
 /** Round is over: stop the roll, settle the display, announce the outcome. */
@@ -692,8 +717,18 @@ function startPolling() {
       return
     }
 
+    // The socket normally delivers HostChanged first, which makes both checks
+    // below no-ops; they cover a missed event.
+    const prevHostId = game.room?.host_user_id
+    const roundWasLive = game.status === 'betting' || game.status === 'spinning'
+
     game.room    = fresh
     game.players = fresh.players || []
+
+    if (prevHostId != null && fresh.host_user_id !== prevHostId) {
+      if (fresh.status === 'waiting' && roundWasLive) cancelRound()
+      announceNewHost(game.players.find(p => p.id === fresh.host_user_id) || { id: fresh.host_user_id, name: '' })
+    }
 
     if (fresh.status === game.status) return
 
@@ -723,6 +758,7 @@ onUnmounted(() => {
       .stopListening('.PlayerJoined').stopListening('.PlayerLeft')
       .stopListening('.BettingOpened').stopListening('.BetPlaced')
       .stopListening('.SpinStarted').stopListening('.SpinResult')
+      .stopListening('.HostChanged')
   }
   disconnectEcho()
 })
