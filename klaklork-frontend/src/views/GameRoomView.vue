@@ -499,6 +499,7 @@ function subscribeChannel() {
       game.addToast(t('toast.joined', { name: e.user.name }), 'info')
     })
     .listen('.PlayerLeft', (e) => {
+      if (e.user.id === auth.user?.id) { leftWhileAway(); return }
       game.removePlayer(e.user.id)
       game.addToast(t('toast.left', { name: e.user.name }), 'info')
     })
@@ -538,6 +539,19 @@ function cancelRound() {
   game.settlement = null
   auth.refreshUser().catch(() => {})
   game.addToast(t('toast.roundCancelled'), 'info')
+}
+
+/**
+ * The server unseated us for being away too long. Head back to the lobby but
+ * keep the room remembered, so its resume card offers the way back in.
+ */
+function leftWhileAway() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null }
+  stopSpinAnimation()
+  stopMusic()
+  // reset() clears the toast list too, so the notice goes in after it
+  disconnectEcho(); game.reset(); router.push({ name: 'lobby' })
+  game.addToast(t('toast.leftWhileAway'), 'info')
 }
 
 function announceNewHost(host) {
@@ -711,14 +725,19 @@ function startPolling() {
       if (e.response?.status === 404) {
         clearInterval(pollInterval); pollInterval = null
         clearLastRoom()
-        game.addToast(t('toast.roomGone'), 'loss')
+        // reset() clears the toast list too, so the notice goes in after it
         disconnectEcho(); game.reset(); router.push({ name: 'lobby' })
+        game.addToast(t('toast.roomGone'), 'loss')
       }
       return
     }
 
     // The socket normally delivers HostChanged first, which makes both checks
     // below no-ops; they cover a missed event.
+    // Not on the roster any more: this tab was silent long enough (asleep,
+    // backgrounded on a phone) that the server treated it as closed.
+    if (!(fresh.players || []).some(p => p.id === auth.user?.id)) { leftWhileAway(); return }
+
     const prevHostId = game.room?.host_user_id
     const roundWasLive = game.status === 'betting' || game.status === 'spinning'
 
