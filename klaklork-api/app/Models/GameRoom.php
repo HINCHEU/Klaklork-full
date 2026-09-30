@@ -106,7 +106,10 @@ class GameRoom extends Model
     }
 
     /**
-     * Close the room for good.
+     * Close the room for good, if nobody has been active in it since $cutoff.
+     *
+     * Idleness is re-read under the row lock, so a player who polls between the
+     * sweep's query and this call keeps their room. Returns whether it closed.
      *
      * Stakes leave a player's balance when the bet is placed, and only
      * settlement puts them anywhere. A room abandoned mid-round (betting or
@@ -114,13 +117,14 @@ class GameRoom extends Model
      * before the bets are deleted with the room — otherwise the money simply
      * vanishes. A finished round's bets are already paid out and are left alone.
      */
-    public function close(): void
+    public function closeIfIdleSince(\DateTimeInterface $cutoff): bool
     {
-        DB::transaction(function () {
+        return DB::transaction(function () use ($cutoff) {
             $room = self::whereKey($this->id)->lockForUpdate()->first();
 
-            if ($room === null) {
-                return;
+            // A room that never recorded activity falls back to its last change.
+            if ($room === null || ($room->last_active_at ?? $room->updated_at) >= $cutoff) {
+                return false;
             }
 
             if (in_array($room->status, ['betting', 'spinning'], true)) {
@@ -130,6 +134,8 @@ class GameRoom extends Model
             }
 
             $room->delete();
+
+            return true;
         });
     }
 

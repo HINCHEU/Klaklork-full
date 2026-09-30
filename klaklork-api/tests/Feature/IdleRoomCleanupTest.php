@@ -129,6 +129,23 @@ class IdleRoomCleanupTest extends TestCase
         $this->assertSame(4000, (int) $player->fresh()->balance);
     }
 
+    public function test_a_player_returning_just_before_the_close_keeps_the_room(): void
+    {
+        $room = $this->room(User::factory()->create());
+
+        $this->travel(GameRoom::IDLE_MINUTES + 1)->minutes();
+        $cutoff = now()->subMinutes(GameRoom::IDLE_MINUTES);
+
+        // The sweep has already picked this room up as stale...
+        $stale = GameRoom::find($room->id);
+
+        // ...when a seated player's poll lands.
+        GameRoom::whereKey($room->id)->update(['last_active_at' => now()]);
+
+        $this->assertFalse($stale->closeIfIdleSince($cutoff));
+        $this->assertModelExists($room);
+    }
+
     public function test_room_without_recorded_activity_falls_back_to_updated_at(): void
     {
         $room = $this->room(User::factory()->create(), ['last_active_at' => null]);

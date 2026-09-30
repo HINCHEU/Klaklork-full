@@ -20,22 +20,16 @@ Artisan::command('rooms:close-idle', function () {
     $cutoff = now()->subMinutes(GameRoom::IDLE_MINUTES);
     $closed = 0;
 
-    // A room that never recorded activity falls back to its last change.
+    // Two branches rather than coalesce(), so the last_active_at index is used.
     // lazyById, not chunk: rows are deleted as we go, and offset paging would
     // skip past the ones that slide into the gap.
-    GameRoom::whereRaw('coalesce(last_active_at, updated_at) < ?', [$cutoff])
+    GameRoom::where('last_active_at', '<', $cutoff)
+        ->orWhere(fn ($q) => $q->whereNull('last_active_at')->where('updated_at', '<', $cutoff))
         ->lazyById()
         ->each(function (GameRoom $room) use ($cutoff, &$closed) {
-            // Re-check against the live row: a player may have come back
-            // between the query and now.
-            $fresh = $room->fresh();
-
-            if ($fresh === null || ($fresh->last_active_at ?? $fresh->updated_at)->gte($cutoff)) {
-                return;
+            if ($room->closeIfIdleSince($cutoff)) {
+                $closed++;
             }
-
-            $fresh->close();
-            $closed++;
         });
 
     $this->info("Closed {$closed} idle room(s).");
