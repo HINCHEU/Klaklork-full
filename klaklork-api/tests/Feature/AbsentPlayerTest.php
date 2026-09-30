@@ -172,6 +172,89 @@ class AbsentPlayerTest extends TestCase
         $this->assertSame($newcomer->id, $room->fresh()->host_user_id);
     }
 
+    /** A locked room, with $gone unseated by the sweep while $host stays. */
+    private function lockedRoomWithAbsentPlayer(User $host, User $gone): GameRoom
+    {
+        $room = $this->room($host, ['password' => 'secret-pass']);
+        $this->seat($room, $gone);
+
+        $this->awayFor(GameRoom::AWAY_MINUTES + 1, $room, $host);
+        $this->sweep();
+        $this->assertFalse($room->hasPlayer($gone->id));
+
+        return $room;
+    }
+
+    public function test_a_player_unseated_while_away_returns_to_a_locked_room_without_the_password(): void
+    {
+        $host = User::factory()->create();
+        $gone = User::factory()->create();
+        $room = $this->lockedRoomWithAbsentPlayer($host, $gone);
+
+        Sanctum::actingAs($gone);
+        $this->postJson("/api/games/{$room->code}/join")->assertOk();
+
+        $this->assertTrue($room->hasPlayer($gone->id));
+    }
+
+    public function test_the_return_pass_is_spent_on_use(): void
+    {
+        $host = User::factory()->create();
+        $gone = User::factory()->create();
+        $room = $this->lockedRoomWithAbsentPlayer($host, $gone);
+
+        Sanctum::actingAs($gone);
+        $this->postJson("/api/games/{$room->code}/join")->assertOk();
+        $this->postJson("/api/games/{$room->code}/leave")->assertOk();
+
+        $this->postJson("/api/games/{$room->code}/join")
+            ->assertForbidden()
+            ->assertJsonPath('password_required', true);
+    }
+
+    public function test_the_return_pass_expires(): void
+    {
+        $host = User::factory()->create();
+        $gone = User::factory()->create();
+        $room = $this->lockedRoomWithAbsentPlayer($host, $gone);
+
+        $this->awayFor(GameRoom::RETURN_PASS_MINUTES + 1, $room, $host);
+
+        Sanctum::actingAs($gone);
+        $this->postJson("/api/games/{$room->code}/join")
+            ->assertForbidden()
+            ->assertJsonPath('password_required', true);
+    }
+
+    public function test_pressing_leave_grants_no_way_back_without_the_password(): void
+    {
+        $host   = User::factory()->create();
+        $player = User::factory()->create();
+        $room   = $this->room($host, ['password' => 'secret-pass']);
+        $this->seat($room, $player);
+
+        Sanctum::actingAs($player);
+        $this->postJson("/api/games/{$room->code}/leave")->assertOk();
+
+        $this->postJson("/api/games/{$room->code}/join")
+            ->assertForbidden()
+            ->assertJsonPath('password_required', true);
+    }
+
+    public function test_a_return_pass_does_not_open_a_different_room(): void
+    {
+        $host  = User::factory()->create();
+        $gone  = User::factory()->create();
+        $this->lockedRoomWithAbsentPlayer($host, $gone);
+
+        $other = $this->room(User::factory()->create(), ['password' => 'other-pass']);
+
+        Sanctum::actingAs($gone);
+        $this->postJson("/api/games/{$other->code}/join")
+            ->assertForbidden()
+            ->assertJsonPath('password_required', true);
+    }
+
     public function test_a_bettor_who_leaves_mid_round_is_still_settled(): void
     {
         $host   = User::factory()->create(['balance' => 10000]);

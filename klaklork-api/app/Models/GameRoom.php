@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class GameRoom extends Model
@@ -101,6 +102,36 @@ class GameRoom extends Model
     public const AWAY_MINUTES = 3;
 
     /**
+     * A player unseated for being away did not choose to leave — their phone
+     * slept, or they switched apps. For this long they may take a seat in a
+     * locked room again without retyping the password. Matches the idle
+     * cleanup, so the pass never outlives an abandoned room's own grace period.
+     * Pressing Leave is a choice, and grants nothing.
+     */
+    public const RETURN_PASS_MINUTES = self::IDLE_MINUTES;
+
+    public function grantReturnPass(int $userId): void
+    {
+        Cache::put($this->returnPassKey($userId), true, now()->addMinutes(self::RETURN_PASS_MINUTES));
+    }
+
+    public function hasReturnPass(int $userId): bool
+    {
+        return Cache::has($this->returnPassKey($userId));
+    }
+
+    public function forgetReturnPass(int $userId): void
+    {
+        Cache::forget($this->returnPassKey($userId));
+    }
+
+    /** Keyed by code as well as id, so a pass can never carry over to another room. */
+    private function returnPassKey(int $userId): string
+    {
+        return "room:{$this->id}:{$this->code}:return-pass:{$userId}";
+    }
+
+    /**
      * Record that a seated player is still here.
      *
      * Called on every member poll (every 5 seconds per player), so both writes
@@ -189,6 +220,10 @@ class GameRoom extends Model
             }
 
             $room->players()->detach($absent->modelKeys());
+
+            foreach ($absent as $player) {
+                $room->grantReturnPass($player->id);
+            }
 
             $host = null;
             $voided = false;

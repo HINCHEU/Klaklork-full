@@ -136,7 +136,9 @@ class GameRoomController extends Controller
             return response()->json($room->load('host:id,name', 'players:id,name,balance'));
         }
 
-        if ($room->is_private) {
+        // A player the absence sweep unseated did not choose to leave, so they
+        // may come back to a locked room without the password for a while.
+        if ($room->is_private && ! $room->hasReturnPass($userId)) {
             $password = $request->input('password');
 
             // Missing and wrong both answer 403 with the same flag, because the
@@ -164,6 +166,7 @@ class GameRoomController extends Controller
 
         $room->players()->attach($userId, ['joined_at' => now(), 'last_seen_at' => now()]);
         $room->markActive($userId);
+        $room->forgetReturnPass($userId);
 
         try { broadcast(new PlayerJoined($room, $request->user()))->toOthers(); } catch (\Throwable) {}
 
@@ -181,6 +184,9 @@ class GameRoomController extends Controller
         if (! $room->hasPlayer($userId)) {
             return response()->json(['message' => 'You are not in this room.'], 403);
         }
+
+        // Leaving on purpose gives up any way back in without the password.
+        $room->forgetReturnPass($userId);
 
         $handoff = DB::transaction(function () use ($room, $userId) {
             $room = GameRoom::whereKey($room->id)->lockForUpdate()->first();
