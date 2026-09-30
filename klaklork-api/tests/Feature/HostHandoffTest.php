@@ -177,6 +177,55 @@ class HostHandoffTest extends TestCase
         $this->assertSame(4000, (int) $player->fresh()->balance);
     }
 
+    /**
+     * The controller's host check reads a snapshot. If the bank changes hands
+     * after that read, the old host's stop must not settle the round — it
+     * would bill a banker who is no longer at the table.
+     */
+    public function test_old_host_cannot_settle_after_the_bank_moves_mid_request(): void
+    {
+        $old  = User::factory()->create(['balance' => 10000]);
+        $new  = User::factory()->create(['balance' => 10000]);
+        $room = $this->room($old, ['status' => 'spinning']);
+        $this->seat($room, $new);
+
+        // Hand the bank over the moment the request has loaded the room.
+        $moved = false;
+        GameRoom::retrieved(function (GameRoom $loaded) use (&$moved, $new) {
+            if (! $moved) {
+                $moved = true;
+                GameRoom::whereKey($loaded->id)->toBase()->update(['host_user_id' => $new->id]);
+            }
+        });
+
+        Sanctum::actingAs($old);
+        $this->postJson("/api/games/{$room->code}/stop")->assertStatus(422);
+
+        $this->assertSame('spinning', $room->fresh()->status);
+        $this->assertSame(10000, (int) $old->fresh()->balance);
+    }
+
+    public function test_a_poll_with_fresh_timestamps_writes_nothing(): void
+    {
+        $host = User::factory()->create();
+        $room = $this->room($host);
+
+        Sanctum::actingAs($host);
+        $this->getJson("/api/games/{$room->code}")->assertOk();
+
+        $writes = 0;
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$writes) {
+            if (str_starts_with(strtolower(ltrim($query->sql)), 'update')) {
+                $writes++;
+            }
+        });
+
+        $this->travel(10)->seconds();
+        $this->getJson("/api/games/{$room->code}")->assertOk();
+
+        $this->assertSame(0, $writes);
+    }
+
     public function test_new_host_can_run_the_next_round(): void
     {
         $host   = User::factory()->create();

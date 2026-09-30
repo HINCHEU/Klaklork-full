@@ -231,7 +231,11 @@ class GameRoomController extends Controller
             // Claim the transition first. Betting may only open from a settled
             // room, so wiping the previous round's bets can never race with the
             // settlement that is paying them out.
+            //
+            // The host check above read a snapshot; the bank can change hands
+            // since (rooms:reassign-absent-hosts), so the claim re-asserts it.
             $claimed = GameRoom::whereKey($room->id)
+                ->where('host_user_id', $room->host_user_id)
                 ->whereIn('status', ['waiting', 'finished'])
                 ->update(['status' => 'betting', 'result' => null]);
 
@@ -269,6 +273,7 @@ class GameRoomController extends Controller
         // transition itself the gate — a bet that has not committed by now loses
         // the race against it rather than slipping into a spinning round.
         $claimed = GameRoom::whereKey($room->id)
+            ->where('host_user_id', $room->host_user_id)   // still the host; see openBetting
             ->where('status', 'betting')
             ->update(['status' => 'spinning']);
 
@@ -304,7 +309,11 @@ class GameRoomController extends Controller
             // updating it leaves a gap where two stop requests both see
             // 'spinning' and settle the same bets twice, minting money out of
             // the banker. Only the update that actually flips the row wins.
+            //
+            // It also re-asserts the host: settleRound bills the banker read
+            // here, so it must still be the banker once the claim lands.
             $claimed = GameRoom::whereKey($room->id)
+                ->where('host_user_id', $room->host_user_id)
                 ->where('status', 'spinning')
                 ->update(['status' => 'finished', 'result' => json_encode($slots)]);
 

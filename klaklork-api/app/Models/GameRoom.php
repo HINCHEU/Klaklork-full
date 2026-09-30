@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class GameRoom extends Model
@@ -100,26 +101,30 @@ class GameRoom extends Model
      * Record that a seated player is still here.
      *
      * Called on every member poll (every 5 seconds per player), so both writes
-     * are conditional: they only land when the stored value has gone stale, and
-     * cost a no-op update otherwise. The room goes straight to the table so
+     * only happen once the stored value has gone stale. The staleness is read
+     * first rather than left to the UPDATE's WHERE: on MySQL even an UPDATE
+     * that changes nothing takes the row lock, and the room row is the lock
+     * that bets and settlement queue on. The room goes straight to the table so
      * updated_at keeps meaning "the room changed".
      */
     public function markActive(int $userId): void
     {
         $now = now();
 
-        self::whereKey($this->id)
-            ->where(fn ($q) => $q->whereNull('last_active_at')->orWhere('last_active_at', '<', $now->copy()->subMinute()))
-            ->toBase()
-            ->update(['last_active_at' => $now]);
+        if (! $this->last_active_at?->gt($now->copy()->subMinute())) {
+            self::whereKey($this->id)->toBase()->update(['last_active_at' => $now]);
+            $this->last_active_at = $now;
+        }
 
-        DB::table('game_players')
+        $seat = DB::table('game_players')
             ->where('game_room_id', $this->id)
-            ->where('user_id', $userId)
-            ->where(fn ($q) => $q->whereNull('last_seen_at')->orWhere('last_seen_at', '<', $now->copy()->subSeconds(30)))
-            ->update(['last_seen_at' => $now]);
+            ->where('user_id', $userId);
 
-        $this->last_active_at = $now;
+        $lastSeen = (clone $seat)->value('last_seen_at');
+
+        if ($lastSeen === null || Carbon::parse($lastSeen)->lt($now->copy()->subSeconds(30))) {
+            $seat->update(['last_seen_at' => $now]);
+        }
     }
 
     /**
