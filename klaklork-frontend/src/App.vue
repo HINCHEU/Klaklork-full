@@ -10,12 +10,11 @@
   </router-view>
 
   <!-- Global Toasts -->
-  <TransitionGroup name="fade">
+  <TransitionGroup name="fade" tag="div" class="toast-stack">
     <div
       v-for="t in game.toasts" :key="t.id"
       class="toast"
       :class="`toast-${t.type}`"
-      style="bottom: calc(1.5rem + var(--i, 0) * 60px)"
     >{{ t.msg }}</div>
   </TransitionGroup>
 </template>

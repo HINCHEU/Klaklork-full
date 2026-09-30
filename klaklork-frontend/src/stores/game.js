@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import api from '@/lib/api'
 
+// Toasts raised in the same millisecond must not share an id — it is their
+// render key, and their expiry removes every toast with that id.
+let nextToastId = 0
+
 export const useGameStore = defineStore('game', {
   state: () => ({
     room: null,
@@ -118,7 +122,7 @@ export const useGameStore = defineStore('game', {
       // Keep result visible momentarily — caller should clear after delay
     },
     addToast(msg, type = 'info') {
-      const id = Date.now()
+      const id = ++nextToastId
       this.toasts.push({ id, msg, type })
       setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id) }, 4000)
     },
