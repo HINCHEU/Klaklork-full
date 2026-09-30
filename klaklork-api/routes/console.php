@@ -3,6 +3,7 @@
 use App\Events\HostChanged;
 use App\Events\PlayerLeft;
 use App\Models\GameRoom;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -85,3 +86,9 @@ Artisan::command('rooms:remove-absent-players', function () {
 // silently switch both sweeps off for a day. A sweep takes about a second.
 Schedule::command('rooms:close-idle')->everyMinute()->withoutOverlapping(2);
 Schedule::command('rooms:remove-absent-players')->everyMinute()->withoutOverlapping(2);
+
+// Guests inactive for User::GUEST_RETENTION_DAYS; see User::prunable(). Off-peak,
+// and with the same short-lived lock as the sweeps above, for the same reason.
+Schedule::command('model:prune', ['--model' => [User::class]])
+    ->dailyAt('04:00')
+    ->withoutOverlapping(60);

@@ -34,6 +34,20 @@ class UserFactory extends Factory
     }
 
     /**
+     * A player who entered with just a name, as POST /api/guest creates them.
+     */
+    public function guest(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'email'             => null,
+            'email_verified_at' => null,
+            'password'          => null,
+            'remember_token'    => null,
+            'balance'           => 10000,
+        ]);
+    }
+
+    /**
      * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static
