@@ -345,7 +345,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
 import api from '@/lib/api'
-import { getEcho, disconnectEcho } from '@/lib/echo'
+import { getEcho, disconnectEcho, socketConnected } from '@/lib/echo'
 import { setLastRoom, clearLastRoom } from '@/lib/session'
 import LanguageToggle from '@/components/LanguageToggle.vue'
 import { useI18n } from '@/lib/i18n'
@@ -721,9 +721,15 @@ onMounted(async () => {
  *
  * Only started once the player is actually seated — polling from behind the
  * password gate would just be a stream of previews.
+ *
+ * Every 5 s while the socket is down; every 15 s while it is up, since events
+ * then carry every change — polls are most of the server's load.
  */
 function startPolling() {
+  let lastPoll = Date.now()
   pollInterval = setInterval(async () => {
+    if (socketConnected() && Date.now() - lastPoll < 15000) return
+    lastPoll = Date.now()
     let fresh
     try { fresh = await loadRoom() } catch (e) {
       // The room was closed out from under us (idle cleanup, or everyone left

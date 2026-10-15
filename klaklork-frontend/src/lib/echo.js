@@ -47,6 +47,10 @@ export function getEcho() {
   return echo
 }
 
+export function socketConnected() {
+  return echo?.connector.pusher.connection.state === 'connected'
+}
+
 export function disconnectEcho() {
   if (echo) {
     echo.disconnect()

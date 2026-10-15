@@ -134,7 +134,7 @@ class GameRoom extends Model
     /**
      * Record that a seated player is still here.
      *
-     * Called on every member poll (every 5 seconds per player), so both writes
+     * Called on every member poll (every 5-15 seconds per player), so both writes
      * only happen once the stored value has gone stale. The staleness is read
      * first rather than left to the UPDATE's WHERE: on MySQL even an UPDATE
      * that changes nothing takes the row lock, and the room row is the lock
