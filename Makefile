@@ -159,7 +159,7 @@ shell:
 	docker compose exec app sh
 
 db-shell:
-	docker compose exec db mysql -u root -p"$${DB_ROOT_PASSWORD:-rootsecret}" "$${DB_DATABASE:-klaklork}"
+	docker compose exec db sh -c 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" exec mysql -u root "$$MYSQL_DATABASE"'
 
 pma-up:
 	docker compose --profile debug up -d phpmyadmin

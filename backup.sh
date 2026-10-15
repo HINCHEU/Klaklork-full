@@ -12,10 +12,12 @@ mkdir -p "$BACKUP_DIR"
 
 echo "==> Creating database backup: ${BACKUP_FILE}"
 
-docker compose exec -T db mysqldump \
-    -u root \
-    -p"${DB_ROOT_PASSWORD:-rootsecret}" \
-    "${DB_DATABASE:-klaklork}" \
+# A failed dump must not leave a file that looks like a backup.
+trap 'rm -f "$BACKUP_FILE"' ERR
+
+# Credentials come from the db container's own environment: .env is never
+# loaded into this shell, so host-side variables would fall back to defaults.
+docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --single-transaction "$MYSQL_DATABASE"' \
     | gzip > "$BACKUP_FILE"
 
 echo "==> Backup complete: ${BACKUP_FILE} ($(du -h "$BACKUP_FILE" | cut -f1))"
