@@ -6,7 +6,7 @@ use App\Models\GameRoom;
 use App\Models\User;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -16,7 +16,7 @@ use Illuminate\Queue\SerializesModels;
  * When round_voided is set, the round that was in play was called off and every
  * stake refunded, so clients drop their bets and go back to waiting.
  */
-class HostChanged implements ShouldBroadcast
+class HostChanged implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
