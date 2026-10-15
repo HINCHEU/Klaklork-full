@@ -46,6 +46,7 @@ RUN apk add --no-cache \
 # PHP tuning
 COPY docker/php.ini        /usr/local/etc/php/conf.d/99-app.ini
 COPY docker/opcache.ini    /usr/local/etc/php/conf.d/10-opcache.ini
+COPY docker/php-fpm.conf   /usr/local/etc/php-fpm.d/zz-pool.conf
 
 # Nginx config
 COPY docker/nginx.conf     /etc/nginx/nginx.conf
@@ -70,6 +71,6 @@ EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -f http://localhost/api/health || exit 1
+    CMD curl -f http://localhost/up || exit 1
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
