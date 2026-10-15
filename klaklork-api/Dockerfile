@@ -43,6 +43,12 @@ RUN apk add --no-cache \
         opcache \
     && rm -rf /var/cache/apk/*
 
+# phpredis — the cache (rate limits, locks) lives in Redis
+RUN apk add --no-cache --virtual .redis-build $PHPIZE_DEPS \
+    && pecl install redis-6.1.0 \
+    && docker-php-ext-enable redis \
+    && apk del .redis-build
+
 # PHP tuning
 COPY docker/php.ini        /usr/local/etc/php/conf.d/99-app.ini
 COPY docker/opcache.ini    /usr/local/etc/php/conf.d/10-opcache.ini

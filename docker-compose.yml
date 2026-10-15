@@ -53,7 +53,9 @@ services:
       DB_DATABASE: ${DB_DATABASE:-klaklork}
       DB_USERNAME: ${DB_USERNAME:-klaklork}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
-      CACHE_STORE: file
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      REDIS_PERSISTENT: "true"
       SESSION_DRIVER: file
       QUEUE_CONNECTION: database
       REVERB_HOST: 0.0.0.0
@@ -66,6 +68,25 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - klaklork
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 — cache only (rate limits, locks); nothing in it must survive a
+  # restart, so persistence is off. Not published outside the Docker network.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: klaklork-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
       - klaklork
 
