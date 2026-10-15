@@ -1,5 +1,10 @@
 .PHONY: help install update backup seed reset logs shell db-shell pma-up pma-down
 
+# Run artisan as the web user: files it creates in storage/ must stay writable by php-fpm.
+ARTISAN = docker compose exec -u www-data app php artisan
+# Earlier versions ran artisan (and the scheduler) as root; hand those files back.
+FIX_OWNER = docker compose exec app chown -R www-data:www-data storage bootstrap/cache
+
 # Default target
 help:
 	@echo ""
@@ -47,21 +52,23 @@ install:
 	fi
 	@echo "==> Waiting for app container to be ready (up to 60s)..."
 	@for i in $$(seq 1 12); do \
-		if docker compose exec app php artisan --version > /dev/null 2>&1; then \
+		if $(ARTISAN) --version > /dev/null 2>&1; then \
 			echo "==> App is ready!"; break; \
 		fi; \
 		echo "  ...waiting ($$i/12)"; sleep 5; \
 	done
 	@echo "==> Waiting for database to be ready (up to 60s)..."
 	@for i in $$(seq 1 12); do \
-		if docker compose exec app php artisan db:show > /dev/null 2>&1; then \
+		if $(ARTISAN) db:show > /dev/null 2>&1; then \
 			echo "==> Database is ready!"; break; \
 		fi; \
 		echo "  ...waiting for DB ($$i/12)"; sleep 5; \
 	done
-	docker compose exec app php artisan migrate --force
-	docker compose exec app php artisan db:seed --force
-	docker compose exec app php artisan storage:link
+	$(FIX_OWNER)
+	$(ARTISAN) migrate --force
+	$(ARTISAN) db:seed --force
+	$(ARTISAN) storage:link
+	$(ARTISAN) optimize
 	@echo ""
 	@echo "╔═══════════════════════════════════════════════════════════╗"
 	@echo "║  ✅  Installation complete!                              ║"
@@ -82,16 +89,17 @@ update:
 	docker compose up -d --build
 	@echo "==> Waiting for app container to be ready..."
 	@for i in $$(seq 1 12); do \
-		if docker compose exec app php artisan --version > /dev/null 2>&1; then \
+		if $(ARTISAN) --version > /dev/null 2>&1; then \
 			echo "==> App is ready!"; break; \
 		fi; \
 		echo "  ...waiting ($$i/12)"; sleep 5; \
 	done
-	docker compose exec app php artisan migrate --force
-	docker compose exec app php artisan storage:link
-	docker compose exec app php artisan config:cache
-	docker compose exec app php artisan route:cache
-	docker compose exec app php artisan view:cache
+	$(FIX_OWNER)
+	$(ARTISAN) migrate --force
+	$(ARTISAN) storage:link
+	$(ARTISAN) config:cache
+	$(ARTISAN) route:cache
+	$(ARTISAN) view:cache
 	@bash notify_update.sh
 	@echo "==> Update complete!"
 
@@ -106,7 +114,7 @@ backup:
 # ---------------------------------------------------------------------------
 seed:
 	@echo "==> Seeding database..."
-	docker compose exec app php artisan db:seed --force
+	$(ARTISAN) db:seed --force
 	@echo "==> Seeding complete!"
 
 # ---------------------------------------------------------------------------
@@ -128,13 +136,13 @@ reset:
 		echo "==> APP_KEY written to .env"; \
 		echo "==> Waiting for app & DB to be ready (up to 60s)..."; \
 		for i in $$(seq 1 12); do \
-			if docker compose exec app php artisan db:show > /dev/null 2>&1; then \
+			if $(ARTISAN) db:show > /dev/null 2>&1; then \
 				echo "==> Ready!"; break; \
 			fi; \
 			echo "  ...waiting ($$i/12)"; sleep 5; \
 		done; \
-		docker compose exec app php artisan migrate:fresh --seed --force; \
-		docker compose exec app php artisan storage:link; \
+		$(ARTISAN) migrate:fresh --seed --force; \
+		$(ARTISAN) storage:link; \
 		echo ""; \
 		echo "==> ✅ Reset complete!"; \
 	else \
