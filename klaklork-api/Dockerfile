@@ -79,4 +79,7 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -f http://localhost/up || exit 1
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+# Cache config, routes and events at start (config needs the runtime env), as
+# www-data so nothing root-owned lands in storage. Halves CPU per request; if it
+# fails the app still starts, just uncached.
+CMD ["sh", "-c", "su -p -s /bin/sh www-data -c 'php artisan optimize' || echo 'artisan optimize failed, running uncached' >&2; exec /usr/bin/supervisord -c /etc/supervisord.conf"]
