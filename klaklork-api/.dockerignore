@@ -11,3 +11,5 @@ storage/framework/views/*
 tests
 phpunit.xml
 *.md
+# Generated per machine; a stale package manifest here hides newly installed packages
+bootstrap/cache/*.php
