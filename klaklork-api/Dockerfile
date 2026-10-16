@@ -14,11 +14,10 @@ RUN composer install \
 ###############################################################################
 # Stage 2 — Production image
 ###############################################################################
-FROM php:8.3-fpm-alpine
+FROM php:8.3-cli-alpine
 
 # Install system deps + PHP extensions
 RUN apk add --no-cache \
-        nginx \
         supervisor \
         curl \
         libpng-dev \
@@ -43,19 +42,17 @@ RUN apk add --no-cache \
         opcache \
     && rm -rf /var/cache/apk/*
 
-# phpredis — the cache (rate limits, locks) lives in Redis
-RUN apk add --no-cache --virtual .redis-build $PHPIZE_DEPS \
-    && pecl install redis-6.1.0 \
-    && docker-php-ext-enable redis \
-    && apk del .redis-build
+# phpredis — the cache (rate limits, locks) lives in Redis.
+# swoole — the Octane server: Laravel boots once per worker instead of once per
+# request, which was most of the CPU under php-fpm.
+RUN apk add --no-cache --virtual .pecl-build $PHPIZE_DEPS \
+    && pecl install redis-6.1.0 swoole-6.0.2 \
+    && docker-php-ext-enable redis swoole \
+    && apk del .pecl-build
 
 # PHP tuning
 COPY docker/php.ini        /usr/local/etc/php/conf.d/99-app.ini
 COPY docker/opcache.ini    /usr/local/etc/php/conf.d/10-opcache.ini
-COPY docker/php-fpm.conf   /usr/local/etc/php-fpm.d/zz-pool.conf
-
-# Nginx config
-COPY docker/nginx.conf     /etc/nginx/nginx.conf
 
 # Supervisor config
 COPY docker/supervisord.conf /etc/supervisord.conf
@@ -72,7 +69,7 @@ COPY --from=vendor /app/vendor ./vendor
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 775 storage bootstrap/cache
 
-# Expose port 80 (nginx)
+# Expose port 80 (Octane)
 EXPOSE 80
 
 # Health check

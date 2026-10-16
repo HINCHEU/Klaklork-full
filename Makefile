@@ -1,6 +1,6 @@
 .PHONY: help install update backup seed reset logs shell db-shell pma-up pma-down
 
-# Run artisan as the web user: files it creates in storage/ must stay writable by php-fpm.
+# Run artisan as the web user: files it creates in storage/ must stay writable by the app server.
 ARTISAN = docker compose exec -u www-data app php artisan
 # Earlier versions ran artisan (and the scheduler) as root; hand those files back.
 FIX_OWNER = docker compose exec app chown -R www-data:www-data storage bootstrap/cache

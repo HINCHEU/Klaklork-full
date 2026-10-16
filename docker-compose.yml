@@ -33,7 +33,7 @@ services:
       - klaklork
 
   # ---------------------------------------------------------------------------
-  # Laravel API  (PHP-FPM + Nginx + Queue Worker + Reverb)
+  # Laravel API  (Octane/Swoole + Queue Worker + Reverb + Scheduler)
   # ---------------------------------------------------------------------------
   app:
     build:
