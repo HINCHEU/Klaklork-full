@@ -106,7 +106,7 @@ services:
     container_name: klaklork-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       - app
     networks:
