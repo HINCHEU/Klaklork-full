@@ -246,7 +246,7 @@ select.input {
    BALANCE BADGE
 ══════════════════════════════════════════ */
 .balance-badge {
-  display: inline-flex; align-items: center; gap: 0.4rem;
+  display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap;
   background: linear-gradient(135deg, rgba(245,200,66,0.12), rgba(245,200,66,0.05));
   border: 1px solid rgba(245,200,66,0.25);
   border-radius: 999px; padding: 0.4rem 1rem;

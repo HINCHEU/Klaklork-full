@@ -5,12 +5,12 @@
   <div class="min-h-screen z-content" style="position:relative">
     <!-- Topbar -->
     <header style="border-bottom: 1px solid var(--border-dim); backdrop-filter: blur(20px); position:sticky; top:0; z-index:50; background: rgba(8,8,18,0.7)">
-      <div class="w-full mx-auto px-6 py-4 flex items-center justify-between" style="max-width:1024px">
+      <div class="w-full mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 flex-wrap" style="max-width:1024px">
         <div class="flex items-center gap-3">
           <div class="game-title" style="font-size:1.6rem">ខ្លាឃ្លោក</div>
-          <span style="font-size:0.7rem; font-weight:700; color:var(--text-muted); letter-spacing:0.1em; background: rgba(255,255,255,0.05); border:1px solid var(--border-dim); border-radius:6px; padding:2px 8px">{{ t('lobby.badge') }}</span>
+          <span style="font-size:0.7rem; font-weight:700; color:var(--text-muted); letter-spacing:0.1em; background: rgba(255,255,255,0.05); border:1px solid var(--border-dim); border-radius:6px; padding:2px 8px; white-space:nowrap">{{ t('lobby.badge') }}</span>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
           <LanguageToggle />
           <div class="balance-badge">
             <span>💰</span>
