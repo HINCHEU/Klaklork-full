@@ -63,8 +63,8 @@ services:
     volumes:
       - app_storage:/var/www/html/storage
     ports:
-      - "${APP_PORT:-8000}:80"
-      - "${REVERB_PORT:-8080}:8080"
+      - "127.0.0.1:${APP_PORT:-8000}:80"
+      - "127.0.0.1:${REVERB_PORT:-8080}:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -106,7 +106,7 @@ services:
     container_name: klaklork-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
     depends_on:
       - app
     networks:
@@ -124,7 +124,7 @@ services:
       PMA_PORT: 3306
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
     ports:
-      - "${PMA_PORT:-8081}:80"
+      - "127.0.0.1:${PMA_PORT:-8081}:80"
     depends_on:
       db:
         condition: service_healthy

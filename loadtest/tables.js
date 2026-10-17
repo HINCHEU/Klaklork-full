@@ -6,7 +6,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-const BASE = __ENV.BASE || 'http://51.79.207.171:8000/api';
+const BASE = __ENV.BASE || 'https://game.hincheu.online/api';
 const SPOOF = __ENV.SPOOF === '1';
 const PLAYERS = 6;
 
