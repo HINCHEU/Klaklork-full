@@ -59,6 +59,13 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour(40)->by('hourly:'.$request->ip()),
         ]);
 
+        // The landing page's live player count. Unauthenticated, so keyed by
+        // address; the answer is cached server-side, so this only has to stop a
+        // loop — the page itself asks twice a minute, and a NAT'd party of
+        // friends on the landing page at once still fits.
+        RateLimiter::for('public-stats', fn (Request $request) =>
+            Limit::perMinute(60)->by('stats:'.$request->ip()));
+
         // Reads a scraper would go after: the public lobby listing and room
         // detail. The ceiling is per-address so a pile of minted tokens does not
         // multiply how fast one machine can harvest rooms.

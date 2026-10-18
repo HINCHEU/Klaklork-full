@@ -28,6 +28,12 @@
           <div style="display:inline-flex; align-items:center; gap:0.5rem; margin-top:1.25rem; padding:0.45rem 0.9rem; border-radius:999px; background:rgba(232,57,74,0.08); border:1px solid rgba(232,57,74,0.2); font-size:0.78rem; color:var(--text-muted)">
             {{ t('enter.playMoneyPill') }}
           </div>
+          <div v-if="online !== null" style="margin-top:0.75rem">
+            <div class="online-pill">
+              <span class="online-dot"></span>
+              {{ t('enter.onlineNow', { count: online.toLocaleString() }) }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -66,6 +72,10 @@
         <div class="lg:hidden text-center mb-8">
           <div class="game-title" style="font-size:3rem">ខ្លាឃ្លោក</div>
           <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.4rem">{{ t('enter.subtitle') }}</p>
+          <div v-if="online !== null" class="online-pill" style="margin-top:0.75rem">
+            <span class="online-dot"></span>
+            {{ t('enter.onlineNow', { count: online.toLocaleString() }) }}
+          </div>
         </div>
 
         <!-- Entry card -->
@@ -125,12 +135,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import PlayResponsibly from '@/components/PlayResponsibly.vue'
 import LanguageToggle from '@/components/LanguageToggle.vue'
 import { useI18n } from '@/lib/i18n'
+import api from '@/lib/api'
 
 const auth    = useAuthStore()
 const route   = useRoute()
@@ -148,7 +159,24 @@ const stats = computed(() => [
   { value: '3×', label: t('enter.statMultiplier') },
 ])
 
-onMounted(() => nameInput.value?.focus())
+// Live "N playing now" badge. Hidden until the first answer arrives, and left
+// as it was if a refresh fails — a stale number beats a flickering one.
+const online = ref(null)
+let onlineTimer = null
+
+async function fetchOnline() {
+  try {
+    const { data } = await api.get('/stats/online')
+    if (Number.isInteger(data?.online)) online.value = data.online
+  } catch { /* keep the last value */ }
+}
+
+onMounted(() => {
+  nameInput.value?.focus()
+  fetchOnline()
+  onlineTimer = setInterval(fetchOnline, 30000)
+})
+onUnmounted(() => clearInterval(onlineTimer))
 
 async function submit() {
   const trimmed = name.value.trim()
@@ -208,4 +236,23 @@ async function submit() {
   50% { transform: translateY(-10px); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Live player count */
+.online-pill {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.45rem 0.9rem; border-radius: 999px;
+  background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.25);
+  font-size: 0.78rem; font-weight: 600; color: #86efac;
+}
+.online-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34,197,94,0.6);
+  animation: onlinePulse 2s ease-out infinite;
+}
+@keyframes onlinePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+@media (prefers-reduced-motion: reduce) { .online-dot { animation: none; } }
 </style>

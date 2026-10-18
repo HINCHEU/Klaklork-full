@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BetController;
 use App\Http\Controllers\Api\GameRoomController;
+use App\Http\Controllers\Api\StatsController;
 use App\Models\GameRoom;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -15,6 +16,10 @@ Route::pattern('code', GameRoom::CODE_PATTERN);
 // Guest entry — name only, no password
 Route::post('/guest', [AuthController::class, 'enter'])
     ->middleware('throttle:guest-entry');
+
+// Live player count for the landing page — public, read-only, a single number.
+Route::get('/stats/online', [StatsController::class, 'online'])
+    ->middleware('throttle:public-stats');
 
 // Private-channel authorization. The SPA authenticates with a bearer token, not
 // a session cookie, so the handshake has to run through the Sanctum guard —

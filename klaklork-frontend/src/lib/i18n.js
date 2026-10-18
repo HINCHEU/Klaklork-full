@@ -32,6 +32,7 @@ const messages = {
     enter: {
       tagline: 'The classic Cambodian animal betting game — now multiplayer. No account, no password. Just pick a name and play.',
       playMoneyPill: '🎲 Play money only — for fun with friends, never for cash',
+      onlineNow: '{count} playing now',
       subtitle: 'Multiplayer Betting Game',
       title: "What's your name?",
       cardSubtitle: 'Pick a name and jump straight into a game',
@@ -214,6 +215,7 @@ const messages = {
     enter: {
       tagline: 'ល្បែងខ្លាឃ្លោកបែបខ្មែរ — ឥឡូវលេងជាមួយគ្នាបានច្រើននាក់។ មិនត្រូវការគណនី មិនត្រូវការពាក្យសម្ងាត់ គ្រាន់តែដាក់ឈ្មោះ រួចលេងបាន។',
       playMoneyPill: '🎲 លុយក្លែងក្លាយប៉ុណ្ណោះ — លេងកម្សាន្តជាមួយមិត្ត មិនមែនលុយពិត',
+      onlineNow: 'កំពុងលេង {count} នាក់',
       subtitle: 'ល្បែងកម្សាន្តលេងជាមួយគ្នា',
       title: 'តើអ្នកឈ្មោះអ្វី?',
       cardSubtitle: 'ដាក់ឈ្មោះ រួចចូលលេងភ្លាម',
