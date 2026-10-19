@@ -45,9 +45,13 @@ RUN apk add --no-cache \
 # phpredis — the cache (rate limits, locks) lives in Redis.
 # swoole — the Octane server: Laravel boots once per worker instead of once per
 # request, which was most of the CPU under php-fpm.
-RUN apk add --no-cache --virtual .pecl-build $PHPIZE_DEPS \
-    && pecl install redis-6.1.0 swoole-6.0.2 \
-    && docker-php-ext-enable redis swoole \
+# uv — Reverb's event loop. Without it ReactPHP falls back to stream_select,
+# which cannot watch more than 1,024 sockets: at ~1,000 players Reverb stalled
+# and every API worker waiting on a broadcast stalled with it.
+RUN apk add --no-cache libuv \
+    && apk add --no-cache --virtual .pecl-build $PHPIZE_DEPS libuv-dev \
+    && pecl install redis-6.1.0 swoole-6.0.2 uv-0.3.0 \
+    && docker-php-ext-enable redis swoole uv \
     && apk del .pecl-build
 
 # PHP tuning

@@ -40,9 +40,14 @@ return [
                 'port' => env('REVERB_PORT', 443),
                 'scheme' => env('REVERB_SCHEME', 'https'),
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
+                // Events are sent inside the player's request (ShouldBroadcastNow),
+                // so the default 30 s let a stalled Reverb hold every API worker.
+                // A dropped event is covered by the room poll; a frozen API is not.
+                'timeout' => 2,
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                'connect_timeout' => 1,
             ],
         ],
 
