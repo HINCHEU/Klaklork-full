@@ -5,11 +5,15 @@ namespace App\Providers;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
+    /** Cache key that, while present, lifts every rate limit. See limits:off. */
+    public const LIMITS_OFF_KEY = 'rate-limits-off';
+
     /**
      * Register any application services.
      */
@@ -114,6 +118,14 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(150)->by($this->playerKey($request)),
             Limit::perMinute(600)->by('addr:'.$request->ip()),
         ]);
+
+        // Load-test switch: `php artisan limits:off` lifts every limiter above
+        // until it expires or `limits:on` (routes/console.php). Read per request,
+        // so it flips without a restart.
+        foreach (['guest-entry', 'public-stats', 'read', 'write', 'join-room', 'create-room', 'broadcasting', 'api'] as $name) {
+            $limit = RateLimiter::limiter($name);
+            RateLimiter::for($name, fn (Request $request) => Cache::has(self::LIMITS_OFF_KEY) ? Limit::none() : $limit($request));
+        }
     }
 
     /**

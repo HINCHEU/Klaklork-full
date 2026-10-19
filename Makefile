@@ -1,4 +1,4 @@
-.PHONY: help install update backup seed reset logs shell db-shell pma-up pma-down
+.PHONY: help install update backup seed reset logs shell db-shell pma-up pma-down limits-off limits-on
 
 # Run artisan as the web user: files it creates in storage/ must stay writable by the app server.
 ARTISAN = docker compose exec -u www-data app php artisan
@@ -21,6 +21,8 @@ help:
 	@echo "║  make db-shell    Open a MySQL prompt                      ║"
 	@echo "║  make pma-up      Start phpMyAdmin (debug profile)         ║"
 	@echo "║  make pma-down    Stop phpMyAdmin                          ║"
+	@echo "║  make limits-off  Rate limits off (MIN=60, then auto-on)   ║"
+	@echo "║  make limits-on   Rate limits back on                      ║"
 	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
 
@@ -102,6 +104,17 @@ update:
 	$(ARTISAN) view:cache
 	@bash notify_update.sh
 	@echo "==> Update complete!"
+
+# ---------------------------------------------------------------------------
+# limits-off / limits-on — Lift API rate limits for a load test
+#   make limits-off            # off for 60 min, then back on by itself
+#   make limits-off MIN=30
+# ---------------------------------------------------------------------------
+limits-off:
+	$(ARTISAN) limits:off $(or $(MIN),60)
+
+limits-on:
+	$(ARTISAN) limits:on
 
 # ---------------------------------------------------------------------------
 # backup — Dump the database

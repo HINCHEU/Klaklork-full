@@ -4,6 +4,8 @@ use App\Events\HostChanged;
 use App\Events\PlayerLeft;
 use App\Models\GameRoom;
 use App\Models\User;
+use App\Providers\AppServiceProvider;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -79,6 +81,22 @@ Artisan::command('rooms:remove-absent-players', function () {
 
     $this->info("Removed {$removed} absent player(s).");
 })->purpose('Unseat players whose tab has been silent for '.GameRoom::AWAY_MINUTES.' minutes');
+
+/**
+ * Lift every API rate limit for a load test, then put them back.
+ *
+ * Off is a cache entry with an expiry, so a forgotten `limits:on` still ends:
+ * the limits come back by themselves after the given minutes.
+ */
+Artisan::command('limits:off {minutes=60}', function (int $minutes) {
+    Cache::put(AppServiceProvider::LIMITS_OFF_KEY, true, now()->addMinutes($minutes));
+    $this->warn("Rate limits are OFF for {$minutes} minute(s). Turn them back on with: php artisan limits:on");
+})->purpose('Turn every API rate limit off for a load test (expires on its own)');
+
+Artisan::command('limits:on', function () {
+    Cache::forget(AppServiceProvider::LIMITS_OFF_KEY);
+    $this->info('Rate limits are ON.');
+})->purpose('Turn API rate limits back on after limits:off');
 
 // The overlap lock must expire quickly. Its default lifetime is 24 hours, and
 // storage/ (where the file cache keeps it) is a persistent volume: a deploy

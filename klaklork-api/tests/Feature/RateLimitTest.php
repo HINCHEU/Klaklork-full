@@ -42,6 +42,34 @@ class RateLimitTest extends TestCase
         $this->assertSame(8, User::count());
     }
 
+    public function test_limits_off_lifts_the_limits_and_limits_on_restores_them(): void
+    {
+        $this->artisan('limits:off', ['minutes' => 5])->assertSuccessful();
+
+        for ($i = 1; $i <= 12; $i++) {
+            $this->postJson('/api/guest', ['name' => "Player{$i}"])->assertCreated();
+        }
+
+        $this->artisan('limits:on')->assertSuccessful();
+
+        // Nothing was counted while off, so the usual burst of 8 is back in full.
+        for ($i = 13; $i <= 20; $i++) {
+            $this->postJson('/api/guest', ['name' => "Player{$i}"])->assertCreated();
+        }
+        $this->postJson('/api/guest', ['name' => 'Player21'])->assertStatus(429);
+    }
+
+    public function test_limits_off_expires_on_its_own(): void
+    {
+        $this->artisan('limits:off', ['minutes' => 5]);
+        $this->travel(6)->minutes();
+
+        for ($i = 1; $i <= 8; $i++) {
+            $this->postJson('/api/guest', ['name' => "Player{$i}"])->assertCreated();
+        }
+        $this->postJson('/api/guest', ['name' => 'Player9'])->assertStatus(429);
+    }
+
     /**
      * The burst limit alone is not the protection — 8/minute sustained is 480
      * accounts an hour. The hourly ceiling is what actually bounds minting, so
