@@ -20,6 +20,11 @@ class AuthController extends Controller
      */
     public function enter(PlayerNameRequest $request)
     {
+        // Players already in keep playing; only new entries wait for a seat.
+        if (StatsController::onlineCount() >= StatsController::MAX_ONLINE) {
+            return response()->json(['message' => 'max player'], 503);
+        }
+
         $user = User::create([
             'name'    => $request->displayName(),
             'balance' => self::STARTING_BALANCE,

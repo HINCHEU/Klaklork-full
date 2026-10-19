@@ -155,7 +155,7 @@ const { t } = useI18n()
 const previewAnimals = [1, 2, 3, 4, 5, 6]
 const stats = computed(() => [
   { value: '6', label: t('enter.statSymbols') },
-  { value: '∞', label: t('enter.statPlayers') },
+  { value: '20', label: t('enter.statPlayers') },
   { value: '3×', label: t('enter.statMultiplier') },
 ])
 
@@ -191,7 +191,8 @@ async function submit() {
     if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) router.replace(redirect)
     else router.replace({ name: 'lobby' })
   } catch (e) {
-    error.value = e.response?.data?.errors?.name?.[0]
+    error.value = (e.response?.status === 503 && t('enter.errFull'))
+      || e.response?.data?.errors?.name?.[0]
       || e.response?.data?.message
       || t('enter.errFailed')
   } finally { loading.value = false }

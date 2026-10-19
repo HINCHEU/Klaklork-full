@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Api\StatsController;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -33,5 +34,18 @@ class OnlineStatsTest extends TestCase
         $this->getJson('/api/stats/online')
             ->assertOk()
             ->assertExactJson(['online' => 2]);
+    }
+
+    public function test_new_players_are_turned_away_once_the_game_is_full(): void
+    {
+        Cache::put('stats:online', StatsController::MAX_ONLINE - 1, 60);
+        $this->postJson('/api/guest', ['name' => 'LastSeat'])->assertCreated();
+
+        Cache::put('stats:online', StatsController::MAX_ONLINE, 60);
+        $this->postJson('/api/guest', ['name' => 'TooLate'])
+            ->assertStatus(503)
+            ->assertExactJson(['message' => 'max player']);
+
+        $this->assertSame(0, User::where('name', 'TooLate')->count());
     }
 }
