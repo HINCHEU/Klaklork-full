@@ -1,0 +1,35 @@
+# Nginx Proxy Manager — the one public entry point (80/443) for every web app on
+# this VPS. Server-wide, so it runs from its own folder, not the Klaklork stack:
+#   docker network create proxy
+#   cp -r deploy/npm ~/npm && cd ~/npm && docker compose up -d
+# Replaces deploy/setup-https.sh: stop host nginx first so 80/443 are free.
+
+services:
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: npm
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:81:81" # admin UI — reach it through an SSH tunnel, never public
+    # Each player's WebSocket holds two connections (client + Reverb upstream).
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+      - ./events.conf:/data/nginx/custom/events.conf:ro
+    networks:
+      - proxy
+      - klaklork
+
+networks:
+  # Other apps: join this network and forward to <container-name>:<port> in NPM.
+  proxy:
+    external: true
+  klaklork:
+    external: true
+    name: klaklork-full_klaklork
