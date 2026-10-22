@@ -1,7 +1,11 @@
 # Nginx Proxy Manager — the one public entry point (80/443) for every web app on
 # this VPS. Server-wide, so it runs from its own folder, not the Klaklork stack:
 #   docker network create proxy
-#   cp -r deploy/npm ~/npm && cd ~/npm && docker compose up -d
+#   cp -r deploy/npm ~/npm && cd ~/npm
+#   sudo install -D -m 644 events.conf data/nginx/custom/events.conf
+#   docker compose up -d
+# events.conf is copied, not bind-mounted: NPM chowns /data at boot and a
+# read-only mount there stops it from starting.
 # Replaces deploy/setup-https.sh: stop host nginx first so 80/443 are free.
 
 services:
@@ -21,7 +25,6 @@ services:
     volumes:
       - ./data:/data
       - ./letsencrypt:/etc/letsencrypt
-      - ./events.conf:/data/nginx/custom/events.conf:ro
     networks:
       - proxy
       - klaklork
