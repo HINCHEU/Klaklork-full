@@ -164,6 +164,7 @@ async function round(t) {
 export default async function () {
   const t = setUp();
   if (!t) return wait(5);
+  
   await Promise.all(t.players.map((p) => connect(t, p)));
   for (let i = 0; i < ROUNDS; i++) await round(t);
   t.closing = true;

@@ -145,7 +145,9 @@
               >
                 <img :src="`/images/${slot}.jpg`" :alt="`Animal ${slot}`" />
                 <div v-if="isBanker && slotStake(slot)" class="bet-label">
-                  {{ t(game.status === 'finished' ? 'room.staked' : 'room.atRisk', { amount: slotStake(slot).toLocaleString() }) }}
+                  {{ game.status === 'finished'
+                    ? `${signed(slotNet(slot))} ៛`
+                    : t('room.atRisk', { amount: (slotStake(slot) * 3).toLocaleString() }) }}
                 </div>
                 <div v-else-if="game.myBets[slot]" class="bet-label">
                   {{ game.myBets[slot].toLocaleString() }} ៛
@@ -439,7 +441,7 @@ const statusColor = computed(() => ({
   finished: '#6ee7b7',
 }[game.status] || '#888'))
 
-/** Total riel every player has staked on one slot — the banker's exposure. */
+/** Total riel every player has staked on one slot (the banker pays up to 3× this if all dice land on it). */
 function slotStake(slot) {
   return game.allBets
     .filter(b => b.animal_slot === slot)
@@ -467,11 +469,19 @@ function tileClass(slot) {
 function winBadge(slot) {
   if (game.status !== 'finished' || !game.result || isBanker.value || !game.myBets[slot]) return null
   const count = game.result.filter(r => r === slot).length
-  if (count === 3) return t('room.win3')
-  if (count === 2) return t('room.win2')
-  if (count === 1) return t('room.win1')
-  return t('room.lost')
+  const label = count ? t(`room.win${count}`) : t('room.lost')
+  return `${label} ${signed(slotNet(slot))} ៛`
 }
+
+/** Settled riel on one slot: my own bets as a player, the mirror of everyone's for the banker. */
+function slotNet(slot) {
+  const net = game.allBets
+    .filter(b => b.animal_slot === slot && (isBanker.value || (b.user?.id ?? b.user_id) === auth.user?.id))
+    .reduce((sum, b) => sum + (b.won_amount || 0), 0)
+  return isBanker.value ? -net : net
+}
+
+const signed = (n) => `${n > 0 ? '+' : ''}${n.toLocaleString()}`
 
 function winBadgeColor(slot) {
   if (game.status !== 'finished' || !game.result) return 'var(--gold)'
